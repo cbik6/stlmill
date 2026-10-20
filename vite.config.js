@@ -15,6 +15,7 @@ export default defineConfig({
       input: {
         main: resolve(import.meta.dirname, 'index.html'),
         clicker: resolve(import.meta.dirname, 'clicker/index.html'),
+        charcap: resolve(import.meta.dirname, 'character-cap/index.html'),
       },
     },
   },

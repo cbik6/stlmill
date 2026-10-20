@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Character Cap — STLmill</title>
+    <meta
+      name="description"
+      content="Turn a pumpkin, ghost, skull, heart or your own sculpt into a cap that presses straight onto a Cherry MX switch, with a two-colour face. Preview it live in 3D and download a print-ready 3MF or STL. Runs in your browser, nothing uploaded."
+    />
+    <meta name="theme-color" content="#a47a52" />
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <!-- Fonts are self-hosted (public/fonts); nothing on this site talks to a third party. -->
+    <link rel="preload" href="/fonts/barlow-semi-condensed-800-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/barlow-semi-condensed-600-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/barlow-600-latin.woff2" as="font" type="font/woff2" crossorigin />
+  </head>
+  <body class="board cc-page">
+    <a class="skip-link" href="#rail">Skip to the controls</a>
+
+    <header class="pins">
+      <a class="pinned brand" href="../" aria-label="STLmill home">
+        <span class="pin" aria-hidden="true"></span>
+        <!-- Millstone mark: stone follows currentColor, facet is brand orange. Source: public/logo/stlmill-mark.svg -->
+        <svg class="mark" viewBox="0 0 120 120" aria-hidden="true">
+          <path fill="currentColor" fill-rule="evenodd" d="M60 8a52 52 0 1 1 0 104a52 52 0 1 1 0-104zM50 50v20h20V50z" />
+          <g stroke="#F07A2A" stroke-width="2.4" stroke-linecap="round" fill="none">
+            <line x1="60" y1="78" x2="60" y2="104" /><line x1="42" y1="60" x2="16" y2="60" /><line x1="78" y1="60" x2="104" y2="60" />
+            <line x1="47" y1="73" x2="29" y2="91" /><line x1="73" y1="73" x2="91" y2="91" /><line x1="47" y1="47" x2="29" y2="29" /><line x1="73" y1="47" x2="91" y2="29" />
+          </g>
+          <path fill="#F07A2A" d="M31 13.4A52 52 0 0 1 89 13.4L60 40z" />
+        </svg>
+        <span class="wordmark">STLmill</span>
+      </a>
+      <h1 class="pinned tool-pin"><span class="pin" aria-hidden="true"></span>Character Cap</h1>
+    </header>
+
+    <main class="shop">
+      <!-- ================= The rail: cards hanging on the board ================= -->
+      <aside class="rail" id="rail" aria-label="Character Cap controls">
+        <!-- Header card: which character becomes the cap -->
+        <section class="hanger" aria-labelledby="character-heading">
+          <span class="peg" aria-hidden="true"></span>
+          <div class="swatch swatch-orange head-card">
+            <span class="hole" aria-hidden="true"></span>
+            <h2 id="character-heading" class="emb emb-orange head-label">Character</h2>
+
+            <fieldset class="seg" id="cc-source-kind">
+              <legend class="visually-hidden">Where the character comes from</legend>
+              <label class="seg-item"><input type="radio" name="source-kind" value="sample" checked /><span>Built-in</span></label>
+              <label class="seg-item"><input type="radio" name="source-kind" value="upload" /><span>Upload</span></label>
+            </fieldset>
+
+            <!-- Built-in characters -->
+            <div class="source-pane" data-kind="sample">
+              <span class="ctl-label" id="cc-characters-label">Pick a character</span>
+              <div class="characters" id="cc-characters" role="group" aria-labelledby="cc-characters-label"></div>
+            </div>
+
+            <!-- Your own sculpt -->
+            <div class="source-pane" data-kind="upload" hidden>
+              <label class="dropzone" id="cc-upload-zone" for="cc-upload-file">
+                <span class="drop-label">Drop your sculpt here, or <u>browse</u></span>
+                <span class="drop-hint">STL, 3MF or OBJ up to 15 MB · one closed solid, any size</span>
+                <input type="file" id="cc-upload-file" accept=".stl,.3mf,.obj,model/stl,model/3mf,model/obj" />
+              </label>
+              <span class="file-name" id="cc-upload-name" hidden></span>
+              <span class="hint hint-error" id="cc-upload-error" role="alert" hidden></span>
+              <span class="hint">It stays in this tab and never leaves your computer.</span>
+            </div>
+
+            <!-- Width (shared by both panes); ui.js swaps in the slider + readout row -->
+            <div id="cc-width-slot"></div>
+          </div>
+        </section>
+
+        <!-- Group cards (Underside, Socket, Face, Body, Finish) are built by src/charcap/ui.js -->
+        <div id="cc-groups">
+          <noscript>
+            <section class="hanger">
+              <div class="swatch swatch-white" style="padding: 24px">The Character Cap mill needs JavaScript to build and preview the model.</div>
+            </section>
+          </noscript>
+        </div>
+
+        <div class="foot" id="cc-foot">
+          <button type="button" class="foot-pin" id="cc-undo" disabled title="Undo (Ctrl+Z)">Undo</button>
+          <button type="button" class="foot-pin" id="cc-redo" disabled title="Redo (Ctrl+Shift+Z)">Redo</button>
+          <button type="button" class="foot-pin" id="cc-reset" title="Back to the default pumpkin">Reset</button>
+        </div>
+      </aside>
+
+      <!-- ================= The bench ================= -->
+      <section class="bench" id="bench" aria-label="3D preview">
+        <div class="bench-plate" id="cc-viewer" role="img" aria-label="Live 3D preview of the character cap. Drag to orbit, scroll to zoom."></div>
+
+        <p class="bench-empty" id="cc-bench-empty" hidden></p>
+
+        <div class="bench-toolbar" role="toolbar" aria-label="View options">
+          <fieldset class="seg seg-ink" id="cc-view-mode">
+            <legend class="visually-hidden">View</legend>
+            <label class="seg-item"><input type="radio" name="view-mode" value="assembled" checked /><span>Assembled</span></label>
+            <label class="seg-item"><input type="radio" name="view-mode" value="exploded" /><span>Exploded</span></label>
+          </fieldset>
+          <span class="tool-sep" aria-hidden="true"></span>
+          <div class="tool-set">
+            <button type="button" class="tool-btn" id="cc-tool-switch" aria-pressed="false" title="Ghost in a reference MX switch (not exported)">Show switch</button>
+            <button type="button" class="tool-btn" id="cc-tool-cut" aria-pressed="false" title="Slice the cap down the middle to see the socket">Cut open</button>
+            <button type="button" class="tool-btn" id="cc-tool-grid" aria-pressed="true" title="10 mm grid on the plate">Grid</button>
+            <button type="button" class="tool-btn" id="cc-tool-callouts" aria-pressed="true" title="Width and height in mm">Callouts</button>
+          </div>
+        </div>
+
+        <div class="bench-busy" id="cc-busy" role="status" aria-live="polite" hidden>
+          <span class="spinner" aria-hidden="true"></span><span id="cc-busy-text">Building…</span>
+        </div>
+
+        <div class="dock" role="group" aria-label="Export">
+          <ul class="dock-slip" id="cc-slip" role="status" aria-live="polite" hidden></ul>
+          <p class="dock-summary" id="cc-summary"><strong>— × — × — mm</strong>Building the first cap…</p>
+          <div class="dock-foot">
+            <button type="button" class="dock-quiet" id="cc-download-stl">STL as a zip</button>
+          </div>
+          <!-- The card's own black tab, hung from the dock's lower edge -->
+          <button type="button" class="tab" id="cc-download-3mf">
+            Download 3MF
+            <svg class="tab-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 12h16M13 5l7 7-7 7" />
+            </svg>
+          </button>
+          <div class="dock-icons">
+            <button type="button" class="dock-icon" id="cc-save" aria-label="Save project file" title="Save project (JSON)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 4v11M7.5 10.5L12 15l4.5-4.5" />
+                <path d="M4 17v1.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V17" />
+              </svg>
+            </button>
+            <button type="button" class="dock-icon" id="cc-load" aria-label="Load project file" title="Load a saved project">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h8.5A1.5 1.5 0 0 1 21 9.5v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z" />
+              </svg>
+            </button>
+            <input type="file" class="file-input" id="cc-load-file" accept=".json,application/json" aria-label="Project file" />
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="../src/charcap/main.js"></script>
+  </body>
+</html>

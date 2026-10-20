@@ -62,7 +62,9 @@ const reducedMotion = () =>
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** Trim a number for prose: 35 -> "35", 21.5 -> "21.5". */
-export const fmt = (n, d = 1) => Number(n).toFixed(d).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+export const fmt = (n, d = 1) =>
+  Number.isFinite(Number(n)) ? Number(n).toFixed(d).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1') : '\u2014';
+const fixed1 = (n) => (Number.isFinite(Number(n)) ? Number(n).toFixed(1) : '\u2014');
 
 const UNIT_WORDS = { mm: 'millimetres', '%': 'percent', '°': 'degrees', '': '' };
 
@@ -171,9 +173,10 @@ export const GROUPS = [
   {
     id: 'fit',
     title: 'Switch & fit',
-    status: (s) => `MX · ${s.params.switch.cutout.toFixed(1)} / ${s.params.switch.cavity.toFixed(1)}`,
+    status: (s) => `MX · ${fixed1(s.params.switch.cutout)} / ${fixed1(s.params.switch.cavity)}`,
     controls: [
-      { type: 'range', path: 'body.height', label: 'Body height', unit: 'mm', min: 14, max: 30, step: 0.5 },
+      // 'auto' lets the engine derive the height from the cavity; the resolved value comes back in assembly.bodyHeight.
+      { type: 'range', path: 'body.height', label: 'Body height', unit: 'mm', min: 14, max: 30, step: 0.5, auto: 'bodyHeight', fallback: 18.5 },
       { type: 'range', path: 'body.rimHeight', label: 'Rim height', unit: 'mm', min: 0, max: 16, step: 0.1 },
       { type: 'range', path: 'body.wall', label: 'Wall', unit: 'mm', min: 1.6, max: 4, step: 0.1 },
       // The switch drops in from the top: it clips into the plate cutout, its flange rests on
@@ -191,7 +194,7 @@ export const GROUPS = [
         ],
       },
       { type: 'range', path: 'switch.cavity', label: 'Cavity width', unit: 'mm', min: 14, max: 15.6, step: 0.1 },
-      { type: 'range', path: 'switch.cavityDepth', label: 'Cavity depth', unit: 'mm', min: 5, max: 12, step: 0.1 },
+      { type: 'range', path: 'switch.cavityDepth', label: 'Cavity depth', unit: 'mm', min: 5, max: 12, step: 0.1, auto: 'cavityDepth', fallback: 5.5 },
       { type: 'range', path: 'switch.pocket', label: 'Flange width', unit: 'mm', min: 15, max: 17, step: 0.1 },
       { type: 'range', path: 'switch.plateThickness', label: 'Plate', unit: 'mm', min: 1.2, max: 2, step: 0.1 },
       { type: 'range', path: 'fit.switchTolerance', label: 'Switch tolerance', unit: 'mm', min: 0, max: 0.4, step: 0.05 },
@@ -207,7 +210,7 @@ export const GROUPS = [
           ['round', 'Round'],
         ],
       },
-      { type: 'range', path: 'switch.socketOpening', label: 'Socket opening', unit: 'mm', min: 4.2, max: 5.2, step: 0.1, when: (p) => p.switch.socketMode === 'tapered' },
+      { type: 'range', path: 'switch.socketOpening', label: 'Socket opening', unit: 'mm', min: 4.2, max: 7, step: 0.1, when: (p) => p.switch.socketMode === 'tapered' },
       { type: 'range', path: 'switch.roundDiameter', label: 'Hole diameter', unit: 'mm', min: 4.6, max: 5.8, step: 0.1, when: (p) => p.switch.socketMode === 'round' },
       { type: 'range', path: 'switch.stemHeight', label: 'Socket depth', unit: 'mm', min: 3, max: 5, step: 0.1 },
       { type: 'range', path: 'fit.clearance', label: 'Cap clearance', unit: 'mm', min: 0.1, max: 0.6, step: 0.05 },
@@ -247,12 +250,37 @@ export const GROUPS = [
 const decimalsOf = (step) => Math.max(0, Math.ceil(-Math.log10(step) - 1e-9));
 const intDigitsOf = (min, max) => String(Math.floor(Math.max(Math.abs(min), Math.abs(max)))).length;
 
+const isNum = (v) => Number.isFinite(Number(v)) && v !== '' && v !== null;
+
 function rangeControl(def) {
   const id = idFor(def.path);
   const decimals = decimalsOf(def.step);
   const range = h('input', { type: 'range', id, min: def.min, max: def.max, step: def.step });
   const ro = createReadout({ intDigits: intDigitsOf(def.min, def.max), decimals, signed: !!def.signed, unit: def.unit });
-  const root = h('div', { class: 'ctl ctl-range' }, h('label', { for: id }, def.label), range, ro.root);
+  const label = h('label', { for: id }, def.label);
+
+  // 'auto' rows: the engine derives the value; the tiles show what it resolved to, and the
+  // AUTO pill (pressed = automatic) returns a hand-set number to automatic again.
+  let isAuto = false;
+  let resolved = def.fallback ?? def.min; // last value the engine resolved
+  let shown = resolved;
+  let autoPill = null;
+  if (def.auto) {
+    autoPill = h('button', { type: 'button', class: 'auto-pill', 'aria-pressed': 'false', title: 'Let the engine choose this value' }, 'Auto');
+    autoPill.addEventListener('click', () => {
+      if (isAuto) setParam(def.path, shown); // pin the current number
+      else setParam(def.path, 'auto');
+    });
+  }
+  const labelCell = autoPill ? h('div', { class: 'ctl-labelwrap' }, label, autoPill) : label;
+  const root = h('div', { class: autoPill ? 'ctl ctl-range ctl-auto' : 'ctl ctl-range' }, labelCell, range, ro.root);
+
+  function show(v, { cascade = false } = {}) {
+    shown = isNum(v) ? Number(v) : resolved;
+    if (range.value !== String(shown)) range.value = String(shown);
+    ro.set(shown, { cascade });
+    range.setAttribute('aria-valuetext', `${fmt(shown, decimals)} ${UNIT_WORDS[def.unit] ?? def.unit}${isAuto ? ', automatic' : ''}`.trim());
+  }
 
   range.addEventListener('input', () => {
     const v = clamp(Number(range.value), def.min, def.max);
@@ -265,12 +293,20 @@ function rangeControl(def) {
     sync(params, meta) {
       const v = get(params, def.path);
       if (v === undefined) return;
-      if (range.value !== String(v)) range.value = String(v);
-      ro.set(v, { cascade: !!meta?.cascade });
-      range.setAttribute('aria-valuetext', `${fmt(v, decimals)} ${UNIT_WORDS[def.unit] ?? def.unit}`.trim());
+      isAuto = !!def.auto && v === 'auto';
+      root.classList.toggle('is-auto', isAuto);
+      if (autoPill) autoPill.setAttribute('aria-pressed', isAuto ? 'true' : 'false');
+      show(isAuto ? resolved : v, { cascade: !!meta?.cascade });
       const enabled = def.when ? !!def.when(params) : true;
       range.disabled = !enabled;
       root.classList.toggle('is-disabled', !enabled);
+    },
+    setAssembly(assembly) {
+      if (!def.auto || !assembly) return;
+      const r = assembly[def.auto];
+      if (!isNum(r)) return;
+      resolved = Number(r);
+      if (isAuto) show(resolved);
     },
   };
 }
@@ -551,6 +587,7 @@ const STORAGE_KEY = 'stlmill-clicker-group';
 function buildGroups(container) {
   const groups = [];
   const syncers = [];
+  const controls = [];
 
   GROUPS.forEach((def) => {
     const bodyId = `ck-group-${def.id}`;
@@ -566,6 +603,7 @@ function buildGroups(container) {
     const body = h('div', { class: 'group-body', id: bodyId, hidden: true });
     for (const c of def.controls) {
       const ctl = FACTORIES[c.type](c);
+      controls.push(ctl);
       body.append(ctl.root);
       syncers.push((s, meta) => ctl.sync(s.params, meta));
     }
@@ -608,7 +646,11 @@ function buildGroups(container) {
   }
   if (initial) open(initial);
 
-  return { open, sync: (s, meta) => syncers.forEach((fn) => fn(s, meta)) };
+  return {
+    open,
+    sync: (s, meta) => syncers.forEach((fn) => fn(s, meta)),
+    setAssembly: (assembly) => controls.forEach((c) => c.setAssembly?.(assembly)),
+  };
 }
 
 // ------------------------------------------------------------------ foot pins
@@ -650,6 +692,8 @@ export function initRail(rail) {
 
   return {
     setSpec: (spec) => header.setSpec(spec),
+    // Resolved 'auto' values (assembly.bodyHeight, assembly.cavityDepth) feed the auto rows.
+    setAssembly: (assembly) => groups.setAssembly(assembly),
     openGroup: (id) => groups.open(id),
   };
 }

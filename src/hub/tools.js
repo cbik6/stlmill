@@ -68,7 +68,7 @@ export const TOOLS = [
     sub: 'A pumpkin, ghost or your own sculpt, made into a cap that presses onto a switch.',
     tagline: 'Character cap — a sculpted character turned into an MX-switch cap with a two-colour face',
     href: './character-cap/',
-    status: 'soon',
+    status: 'live',
     color: 'orange',
     action: 'Open the mill',
     icon: ICONS.character,

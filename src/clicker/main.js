@@ -229,6 +229,7 @@ const session = createSession({
     syncReferenceSwitch(result.params);
     setSummary(result);
     rail.setSpec(result.spec);
+    rail.setAssembly(result.assembly);
     const warnings = (result.warnings || []).filter((w) => !EMPTY_WARNINGS.has(w));
     setSlip(warnings);
     const empty = !result.spec || !result.spec.shapes?.length;
