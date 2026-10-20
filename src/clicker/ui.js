@@ -174,7 +174,7 @@ export const GROUPS = [
     status: (s) => `MX · ${s.params.switch.cutout.toFixed(1)} / ${s.params.switch.cavity.toFixed(1)}`,
     controls: [
       { type: 'range', path: 'body.height', label: 'Body height', unit: 'mm', min: 14, max: 30, step: 0.5 },
-      { type: 'range', path: 'body.rimHeight', label: 'Rim height', unit: 'mm', min: 0, max: 12, step: 0.1 },
+      { type: 'range', path: 'body.rimHeight', label: 'Rim height', unit: 'mm', min: 0, max: 16, step: 0.1 },
       { type: 'range', path: 'body.wall', label: 'Wall', unit: 'mm', min: 1.6, max: 4, step: 0.1 },
       // The switch drops in from the top: it clips into the plate cutout, its flange rests on
       // the plate, and the lower housing + pins sit in a closed cavity beneath. The floor stays solid.
@@ -184,6 +184,21 @@ export const GROUPS = [
       { type: 'range', path: 'switch.pocket', label: 'Flange width', unit: 'mm', min: 15, max: 17, step: 0.1 },
       { type: 'range', path: 'switch.plateThickness', label: 'Plate', unit: 'mm', min: 1.2, max: 2, step: 0.1 },
       { type: 'range', path: 'fit.switchTolerance', label: 'Switch tolerance', unit: 'mm', min: 0, max: 0.4, step: 0.05 },
+      // Stem socket in the cap. Tapered (borrowed from a well-fitting printed cap) enters loose
+      // and wedges near the ceiling; Round is a glue fit with no grip on the cross.
+      {
+        type: 'segmented',
+        path: 'switch.socketMode',
+        label: 'Socket',
+        options: [
+          ['tapered', 'Tapered'],
+          ['cross', 'Straight'],
+          ['round', 'Round'],
+        ],
+      },
+      { type: 'range', path: 'switch.socketOpening', label: 'Socket opening', unit: 'mm', min: 4.2, max: 5.2, step: 0.1, when: (p) => p.switch.socketMode === 'tapered' },
+      { type: 'range', path: 'switch.roundDiameter', label: 'Hole diameter', unit: 'mm', min: 4.6, max: 5.8, step: 0.1, when: (p) => p.switch.socketMode === 'round' },
+      { type: 'range', path: 'switch.stemHeight', label: 'Socket depth', unit: 'mm', min: 3, max: 5, step: 0.1 },
       { type: 'range', path: 'fit.clearance', label: 'Cap clearance', unit: 'mm', min: 0.1, max: 0.6, step: 0.05 },
       { type: 'range', path: 'cap.thickness', label: 'Cap thickness', unit: 'mm', min: 2, max: 5, step: 0.1 },
       { type: 'range', path: 'cap.designHeight', label: 'Design height', unit: 'mm', min: 0.4, max: 2, step: 0.1 },

@@ -459,8 +459,9 @@ const asm = base.assembly;
 check(Math.abs(asm.floorThickness - 1.5) < 1e-6, `floor thickness 1.5 (got ${asm.floorThickness})`);
 check(Math.abs(asm.cavityDepth - 8.5) < 1e-6, 'cavity depth 8.5');
 check(Math.abs(asm.plateTopZ - (DEFAULT_PARAMS.body.height - DEFAULT_PARAMS.body.rimHeight)) < 1e-6, 'plate top z');
-check(Math.abs(asm.capZ - (asm.plateTopZ + 6.6)) < 1e-6, 'capZ = plateTopZ + 6.6');
-check(Math.abs(asm.capZ - (DEFAULT_PARAMS.body.height - 0.4)) < 1e-6, 'cap underside seats 0.4 mm below the rim');
+check(Math.abs(asm.capZ - (asm.plateTopZ + 6.6 + DEFAULT_PARAMS.switch.stemHeight)) < 1e-6, 'capZ = plateTopZ + 6.6 + stemHeight (boss bottom on the housing top)');
+check(Math.abs(asm.capZ - (DEFAULT_PARAMS.body.height - 0.4)) < 1e-6, `cap underside seats 0.4 mm below the rim (capZ ${asm.capZ}, height ${DEFAULT_PARAMS.body.height})`);
+check(DEFAULT_PARAMS.body.rimHeight === 11.0 && DEFAULT_PARAMS.body.height === 22.5, 'defaults: rimHeight 11.0, height 22.5');
 {
   const pos = base.parts[0].geometry.attributes.position.array;
   const half = (DEFAULT_PARAMS.switch.cavity + 2 * DEFAULT_PARAMS.fit.switchTolerance) / 2;
@@ -525,16 +526,101 @@ const short = report('short body (height 6, rim 2)', await buildClicker({ design
 check(short.warnings.some((w) => /too short/.test(w)), 'short body warning');
 const shallow = report('shallow cavity (4 mm)', await buildClicker({ design: { spec }, switch: { cavityDepth: 4 } }));
 check(shallow.warnings.some((w) => /cavity is only/.test(w)), 'shallow cavity warning');
-check(Math.abs(shallow.assembly.floorThickness - (DEFAULT_PARAMS.body.height - 7 - 1.5 - 4)) < 1e-6, 'shallow cavity leaves a thicker floor');
+check(Math.abs(shallow.assembly.floorThickness - (DEFAULT_PARAMS.body.height - DEFAULT_PARAMS.body.rimHeight - 1.5 - 4)) < 1e-6, 'shallow cavity leaves a thicker floor');
 const tiny = report('tiny circle (size 22)', await buildClicker({ design: { spec }, base: { style: 'circle', size: 22 } }));
 check(tiny.warnings.some((w) => /too small/.test(w)), 'tiny base warning');
 
-// 7. reference switch
+// 7. stem socket variants (cap) and the press-fit coupon plate
+/** z of every face crossing crossed by a vertical ray at (x, y), ascending. */
+function hitsAlongAxis(geometry, x, y) {
+  const pos = geometry.attributes.position.array;
+  const index = geometry.index ? geometry.index.array : null;
+  const n = index ? index.length : pos.length / 3;
+  const zs = [];
+  for (let i = 0; i + 2 < n; i += 3) {
+    const a = (index ? index[i] : i) * 3, b = (index ? index[i + 1] : i + 1) * 3, c = (index ? index[i + 2] : i + 2) * 3;
+    const ax = pos[a] - x, ay = pos[a + 1] - y, bx = pos[b] - x, by = pos[b + 1] - y, cx = pos[c] - x, cy = pos[c + 1] - y;
+    const d1 = ax * by - ay * bx, d2 = bx * cy - by * cx, d3 = cx * ay - cy * ax;
+    if ((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0)) continue;
+    const area = d1 + d2 + d3;
+    if (Math.abs(area) < 1e-12) continue;
+    zs.push((pos[a + 2] * d2 + pos[b + 2] * d3 + pos[c + 2] * d1) / area);
+  }
+  // a ray through a shared vertex/edge reports the same face several times: keep unique z
+  zs.sort((p, q) => p - q);
+  return zs.filter((z, i) => i === 0 || Math.abs(z - zs[i - 1]) > 1e-6);
+}
+const halfExtentAt = (geometry, z, axis = 0) => {
+  const pos = geometry.attributes.position.array;
+  let m = 0;
+  for (let i = 0; i < pos.length; i += 3) if (Math.abs(pos[i + 2] - z) < 1e-4) m = Math.max(m, Math.abs(pos[i + axis]));
+  return m;
+};
+console.log('\n== stem socket variants');
+const depth = DEFAULT_PARAMS.switch.stemHeight;
+check(depth === 4.0 && DEFAULT_PARAMS.switch.socketMode === 'tapered' && DEFAULT_PARAMS.switch.socketOpening === 4.6 && DEFAULT_PARAMS.switch.roundDiameter === 5.0, 'socket defaults: tapered 4.6 -> 4.1, 4.0 deep, round 5.0');
+for (const [mode, extra, openHalf, ceilHalf] of [
+  ['cross', {}, 2.05, 2.05],
+  ['tapered', {}, 2.3, 2.05],
+  ['round', {}, 2.5, 2.5],
+]) {
+  // raised mode -> plain cap top, so the axis ray sees exactly the socket ceiling (z = 0) and the top (z = 3)
+  const r = report(`cap socket: ${mode}`, await buildClicker({ design: { spec }, cap: { designMode: 'raised' }, switch: { socketMode: mode, ...extra } }), { quiet: true });
+  const capG = r.parts[1].geometry;
+  const hits = hitsAlongAxis(capG, 0.0, 0.0);
+  check(Math.abs(capG.boundingBox.min.z + depth) < 1e-6, `${mode}: socket opening at z = -${depth}`);
+  check(hits.length === 2 && Math.abs(hits[0]) < 1e-6 && Math.abs(hits[1] - 3) < 1e-6, `${mode}: axis ray hits the ceiling at z = 0 (depth ${depth}) and the cap top only (got ${hits.map((z) => z.toFixed(2)).join(', ')})`);
+  const open = halfExtentAt(capG, -depth, 0), ceil = halfExtentAt(capG, 0, 0);
+  // the boss ring also sits on those planes, so look at the socket polygon extents via the inner vertices
+  const inner = (z) => { const pos = capG.attributes.position.array; let m = 0; for (let i = 0; i < pos.length; i += 3) if (Math.abs(pos[i + 2] - z) < 1e-4 && Math.hypot(pos[i], pos[i + 1]) < 2.74) m = Math.max(m, Math.abs(pos[i])); return m; };
+  check(Math.abs(inner(-depth) - openHalf) < 0.02, `${mode}: opening half-width ${openHalf} (got ${inner(-depth).toFixed(3)})`);
+  check(Math.abs(inner(0) - ceilHalf) < 0.02, `${mode}: ceiling half-width ${ceilHalf} (got ${inner(0).toFixed(3)})`);
+  const unexpected = r.warnings.filter((w) => !/need supports/.test(w));
+  check(unexpected.length === 0, `${mode}: no socket warnings (${unexpected.join(' | ')})`);
+  console.log(`  ${mode.padEnd(8)} cap ${r.assembly.triangles.cap} tris, axis hits [${hits.map((z) => z.toFixed(2)).join(', ')}], opening half ${inner(-depth).toFixed(2)}, ceiling half ${inner(0).toFixed(2)}, min z ${capG.boundingBox.min.z.toFixed(2)}`);
+}
+{
+  const wide = await buildClicker({ design: { spec }, switch: { socketMode: 'round', roundDiameter: 6.0 } });
+  check(wide.warnings.some((w) => /boss widened/.test(w)), 'round 6.0: boss widened warning');
+  check(openEdgeCount(wide.parts[1].geometry) === 0, 'round 6.0: cap watertight');
+}
+
+console.log('\n== socket coupons');
+{
+  const { buildSocketCoupons, exportSocketCoupons } = await import('./index.js');
+  const { parts: coupons } = buildSocketCoupons();
+  check(coupons.length === 6, 'six coupons');
+  const names = coupons.map((p) => p.name);
+  check(names.join('|') === 'A straight 4.1|B straight 4.3|C tapered 4.6-4.1|D tapered 4.8-4.2|E round 5.0|F round 5.4', `coupon names (${names.join('|')})`);
+  for (const p of coupons) {
+    const bb = p.geometry.boundingBox;
+    check(openEdgeCount(p.geometry) === 0, `${p.name}: watertight`);
+    check(Math.abs(bb.max.x - bb.min.x - 14) < 0.05 && Math.abs(bb.max.y - bb.min.y - 14) < 0.05 && bb.min.z === 0 && Math.abs(bb.max.z - 6) < 1e-6, `${p.name}: 14 x 14 x 6 on z = 0`);
+    const hits = hitsAlongAxis(p.geometry, 0, 0);
+    check(hits.length === 2 && Math.abs(hits[0]) < 1e-6 && Math.abs(hits[1] - 2) < 1e-6, `${p.name}: socket opens UP, ceiling at z = 2 (hits ${hits.map((z) => z.toFixed(2)).join(', ')})`);
+  }
+  const laid = layoutForPrint(coupons).parts;
+  const xs = laid.map((p) => (p.geometry.boundingBox.min.x + p.geometry.boundingBox.max.x) / 2);
+  check(xs.every((x, i) => i === 0 || Math.abs(x - xs[i - 1] - 22) < 1e-6), `coupons on a 22 mm pitch (${xs.map((x) => x.toFixed(1)).join(', ')})`);
+  const blob = await exportSocketCoupons();
+  const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+  const xml = await zip.file('3D/3dmodel.model').async('string');
+  check((xml.match(/<object id="\d+" name="[^"]+" type="model" pid="2"/g) || []).length === 6, 'coupon 3MF has 6 mesh objects');
+  check((xml.match(/<item objectid=/g) || []).length === 6, 'coupon 3MF has 6 build items');
+  check(/name="C tapered 4.6-4.1"/.test(xml), 'coupon objects carry their labels');
+  const ms = await zip.file('Metadata/model_settings.config').async('string');
+  check((ms.match(/<assemble_item [^>]*transform="1 0 0 0 1 0 0 0 1 0 0 0"/g) || []).length === 6, 'coupon assembly keeps the plate layout');
+  console.log(`  coupon 3MF: ${blob.size} bytes, ${coupons.map((p) => `${p.name.split(' ')[0]}:${p.geometry.index.count / 3}`).join(' ')} tris`);
+}
+
+// 8. reference switch
+const { MX } = await import('./index.js');
 const sw = buildReferenceSwitch();
 sw.computeBoundingBox();
 const plateTop = DEFAULT_PARAMS.body.height - DEFAULT_PARAMS.body.rimHeight;
 console.log('\nreference switch tris', sw.index ? sw.index.count / 3 : sw.attributes.position.count / 3, 'z', sw.boundingBox.min.z.toFixed(2), '..', sw.boundingBox.max.z.toFixed(2));
-check(Math.abs(sw.boundingBox.max.z - (plateTop + 6.6 + DEFAULT_PARAMS.switch.stemHeight)) < 1e-3, 'switch stem top z = plateTop + 6.6 + stemHeight');
+check(MX.STEM_HEIGHT === 3.6, 'MX stem height constant is 3.6 (independent of the socket depth)');
+check(Math.abs(sw.boundingBox.max.z - (plateTop + 6.6 + MX.STEM_HEIGHT)) < 1e-3, 'switch stem top z = plateTop + 6.6 + 3.6');
 check(Math.abs(sw.boundingBox.min.z - (plateTop - 1.5 - 5.0 - 3.3)) < 1e-3, 'switch pins bottom z = plateBottom - 8.3');
 check(sw.boundingBox.min.z > base.assembly.cavityBottomZ - 1e-6, 'switch pins stay above the cavity floor');
 check(Math.abs(sw.boundingBox.max.x - 7.8) < 1e-3, 'switch flange is 15.6 wide');

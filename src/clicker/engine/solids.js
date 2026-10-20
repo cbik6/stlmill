@@ -25,6 +25,7 @@ import { ShellBuilder, cleanPolygon, polygonContains, squarePolygon } from './sh
 // Simplified Cherry MX reference dimensions (mm), plate-mount
 export const MX = {
   UPPER_HOUSING: 6.6, // plate top -> top of upper housing (where the cap's underside rests)
+  STEM_HEIGHT: 3.6, // the MX cross stem above the upper housing (the cap socket depth is switch.stemHeight)
   FLANGE: 15.6, // square flange resting on the plate's top face
   FLANGE_THICKNESS: 0.8,
   UPPER_TOP_SIDE: 13.0, // the upper housing tapers from the flange to about this
@@ -135,11 +136,14 @@ export function resolveHeights(params, warnings) {
     warnings.push(`Switch cavity depth clamped to ${cavityDepth.toFixed(1)} mm to keep a ${FLOOR_MIN} mm floor.`);
   }
   const cavityBottomZ = plateBottomZ - cavityDepth;
-  const capZ = plateTopZ + MX.UPPER_HOUSING; // z of the cap's bottom face when seated on a real MX switch
+  // Seated cap: the stem boss (socket depth = stemHeight) rests on the upper housing top, so the
+  // cap's underside slab sits at plateTop + 6.6 + stemHeight (0.4 mm stem play with a 4.0 socket).
+  const seat = MX.UPPER_HOUSING + Math.max(0.5, sw.stemHeight);
+  const capZ = plateTopZ + seat; // z of the cap's bottom face (cap frame origin) in the body frame
   if (capZ > H + 0.05) {
-    warnings.push(`Cap sits ${(capZ - H).toFixed(1)} mm above the body rim (switch housing is taller than the recess). Set rimHeight to at least ${MX.UPPER_HOUSING} mm to seat the cap inside the rim.`);
+    warnings.push(`Cap sits ${(capZ - H).toFixed(1)} mm above the body rim (switch housing + stem boss are taller than the recess). Set rimHeight to at least ${seat.toFixed(1)} mm to seat the cap inside the rim.`);
   } else if (capZ + cap.thickness < H - 0.05) {
-    warnings.push(`Cap top ends up ${(H - capZ - cap.thickness).toFixed(1)} mm below the body rim and cannot be pressed comfortably; reduce rimHeight below ${(MX.UPPER_HOUSING + cap.thickness).toFixed(1)} mm or thicken the cap.`);
+    warnings.push(`Cap top ends up ${(H - capZ - cap.thickness).toFixed(1)} mm below the body rim and cannot be pressed comfortably; reduce rimHeight below ${(seat + cap.thickness).toFixed(1)} mm or thicken the cap.`);
   }
   return { height: H, rim, plate, cavityDepth, floor: cavityBottomZ, plateTopZ, plateBottomZ, cavityBottomZ, capZ };
 }
@@ -261,17 +265,59 @@ export function buildRing(layout, params, heights, warnings) {
   return extrude(shape, ringH, heights.height / 2 - ringH / 2);
 }
 
-/** MX cross (stemCrossWidth x stemCrossThickness, both arms) as a 12-point Shape, CCW. */
-export function crossShape(params) {
-  const sw = params.switch;
-  const w = sw.stemCrossWidth / 2;
-  const t = sw.stemCrossThickness / 2;
-  return new THREE.Shape(
-    [
-      [-w, -t], [-t, -t], [-t, -w], [t, -w], [t, -t], [w, -t],
-      [w, t], [t, t], [t, w], [-t, w], [-t, t], [-w, t],
-    ].map(([x, y]) => new THREE.Vector2(x, y)),
-  );
+/** MX cross polygon (width x thickness, both arms) as 12 CCW points. */
+export function crossPolygon(width, thickness) {
+  const w = width / 2;
+  const t = thickness / 2;
+  return [
+    [-w, -t], [-t, -t], [-t, -w], [t, -w], [t, -t], [w, -t],
+    [w, t], [t, t], [t, w], [-t, w], [-t, t], [-w, t],
+  ].map(([x, y]) => ({ x, y }));
+}
+
+/** MX cross (stemCrossWidth x stemCrossThickness) as a Shape, CCW. */
+export function crossShape(params, width = params.switch.stemCrossWidth, thickness = params.switch.stemCrossThickness) {
+  return new THREE.Shape(crossPolygon(width, thickness).map((p) => new THREE.Vector2(p.x, p.y)));
+}
+
+/**
+ * Socket cross-sections for the cap stem (and the test coupons).
+ *   'cross'   straight MX cross: stemCrossWidth x stemCrossThickness, full depth
+ *   'tapered' cross lofted from socketOpening (at the opening) to stemCrossWidth (at the ceiling);
+ *             the arm thickness scales by the same ratio so every face has a lead-in
+ *   'round'   plain cylinder hole of roundDiameter (glue fit)
+ * Returns { mode, opening, ceiling, extent } - opening/ceiling are CCW polygons with the same
+ * vertex count (so a loft between them is clean); extent is the opening's largest dimension.
+ */
+export function socketPolygons(sw) {
+  const mode = sw.socketMode === 'round' || sw.socketMode === 'cross' ? sw.socketMode : 'tapered';
+  const width = Math.max(1, sw.stemCrossWidth);
+  const thick = Math.max(0.4, sw.stemCrossThickness);
+  if (mode === 'round') {
+    const d = Math.max(1, sw.roundDiameter);
+    const c = cleanPolygon(circlePoints(d / 2, 48));
+    return { mode, opening: c, ceiling: c, extent: d };
+  }
+  const ceiling = cleanPolygon(crossPolygon(width, thick));
+  if (mode === 'cross') return { mode, opening: ceiling, ceiling, extent: width };
+  const open = Math.max(width, sw.socketOpening);
+  const ratio = open / width;
+  const opening = cleanPolygon(crossPolygon(open, Math.min(thick * ratio, open / 2)));
+  return { mode, opening, ceiling, extent: open };
+}
+
+/**
+ * Add a blind socket to a shell: the ring face of `outer` around the opening at zOpen, the
+ * socket walls (loft) down/up to zCeil and the ceiling face at zCeil. Works in both directions
+ * (zCeil > zOpen: socket going up from a bottom face, as in the cap; zCeil < zOpen: socket going
+ * down from a top face, as in the coupons).
+ */
+export function addSocket(b, outer, zOpen, zCeil, socket) {
+  const up = zCeil < zOpen; // socket opens on a top face
+  b.face(outer, [socket.opening], zOpen, up);
+  b.face(socket.ceiling, [], zCeil, up);
+  if (up) b.loft(socket.ceiling, socket.opening, zCeil, zOpen, true);
+  else b.loft(socket.opening, socket.ceiling, zOpen, zCeil, true);
 }
 
 /** Circle with the MX cross hole, as a Shape (kept for consumers that want a single extrusion). */
@@ -293,11 +339,18 @@ export function buildCapParts(layout, params, warnings) {
   const t = Math.max(1.2, cap.thickness);
   if (t !== cap.thickness) warnings.push(`Cap thickness raised to ${t} mm (minimum).`);
 
-  const s = sw.stemHeight;
+  const s = Math.max(0.5, sw.stemHeight); // socket depth
   const P = cleanPolygon(layout.capPoints);
-  const S = cleanPolygon(circlePoints(sw.stemOuterDiameter / 2, 48));
-  const X = cleanPolygon(crossShape(params).getPoints(1));
-  const stemFits = polygonContains(P, S, 0.05) && polygonContains(S, X, 0.05);
+  const socket = socketPolygons(sw);
+  // keep at least a 1 mm boss wall around the socket opening
+  let bossD = sw.stemOuterDiameter;
+  const minBoss = socket.extent + 2.0;
+  if (bossD < minBoss) {
+    bossD = minBoss;
+    warnings.push(`Stem boss widened to ${bossD.toFixed(1)} mm to keep a 1 mm wall around the ${socket.mode} socket.`);
+  }
+  const S = cleanPolygon(circlePoints(bossD / 2, 48));
+  const stemFits = polygonContains(P, S, 0.05) && polygonContains(S, socket.opening, 0.05);
 
   // design polygons (cleaned once; shared by faces and walls)
   const designPolys = layout.designShapes.map((sh) => {
@@ -321,11 +374,9 @@ export function buildCapParts(layout, params, warnings) {
     // CSG-free closed shell: cap slab + stem socket (+ engraving when the design is inside the cap)
     const b = new ShellBuilder();
     b.wall(P, 0, t, false); // cap side wall
-    b.face(P, [S], 0, false); // cap underside around the stem
-    b.face(X, [], 0, false); // socket ceiling (inside the cross)
-    b.wall(S, -s, 0, false); // stem outer wall
-    b.wall(X, -s, 0, true); // cross socket wall
-    b.face(S, [X], -s, false); // stem bottom ring
+    b.face(P, [S], 0, false); // cap underside around the stem boss
+    b.wall(S, -s, 0, false); // boss outer wall
+    addSocket(b, S, -s, 0, socket); // boss bottom ring, socket walls (lofted when tapered), ceiling at z = 0
     if (engraveInShell) {
       const zf = t - engraveDepth;
       b.face(P, designPolys.map((d) => d.outer), t, true); // top surface minus the design
@@ -342,11 +393,11 @@ export function buildCapParts(layout, params, warnings) {
     }
     capGeom = b.build();
   } else {
-    warnings.push('Cap outline is too small for the stem; fell back to boolean construction.');
+    warnings.push('Cap outline is too small for the stem; fell back to boolean construction (straight socket at the opening size).');
     capGeom = extrude(layout.capShape, t, 0);
-    const cylinder = extrude(pointsToShape(circlePoints(sw.stemOuterDiameter / 2, 48)), s + 0.5, -s);
+    const cylinder = extrude(pointsToShape(circlePoints(bossD / 2, 48)), s + 0.5, -s);
     capGeom = csg(capGeom, cylinder, ADDITION);
-    capGeom = csg(capGeom, extrude(crossShape(params), s + 1, -s - 1), SUBTRACTION);
+    capGeom = csg(capGeom, extrude(pointsToShape(socket.opening), s + 1, -s - 1), SUBTRACTION);
   }
   if (wantEngrave && engraveDepth > 0.05 && !engraveInShell) {
     // design crosses the cap edge (presets) -> boolean subtraction, repaired afterwards
@@ -375,6 +426,48 @@ export function buildCapParts(layout, params, warnings) {
     }
   }
   return { cap: finalize(capGeom, 'cap', warnings), design: designGeom, engraveDepth };
+}
+
+/** The six socket variants on the press-fit test plate (all 4.0 mm deep). */
+export const SOCKET_COUPONS = [
+  { label: 'A straight 4.1', socketMode: 'cross', stemCrossWidth: 4.1, stemCrossThickness: 1.3 },
+  { label: 'B straight 4.3', socketMode: 'cross', stemCrossWidth: 4.3, stemCrossThickness: 1.4 },
+  { label: 'C tapered 4.6-4.1', socketMode: 'tapered', stemCrossWidth: 4.1, stemCrossThickness: 1.3, socketOpening: 4.6 },
+  { label: 'D tapered 4.8-4.2', socketMode: 'tapered', stemCrossWidth: 4.2, stemCrossThickness: 1.3, socketOpening: 4.8 },
+  { label: 'E round 5.0', socketMode: 'round', roundDiameter: 5.0 },
+  { label: 'F round 5.4', socketMode: 'round', roundDiameter: 5.4 },
+];
+
+/**
+ * Press-fit test plate: six 14 mm round pucks, 6 mm tall, in a row with 8 mm gaps, each with one
+ * socket variant. Built directly in PRINT orientation: the socket opens on the TOP face (z = 6)
+ * and its ceiling is 4 mm down (z = 2), so the plate prints without supports and the sockets are
+ * pressed onto a real switch from above. One closed shell per puck; parts carry `print` so the
+ * exporters keep this layout and the Assembly View shows the same row.
+ * Returns { parts: [{ name, geometry, color, print }] }.
+ */
+export function buildSocketCoupons({ diameter = 14, height = 6, depth = 4.0, gap = 8, color = '#f5f5f5' } = {}) {
+  const parts = [];
+  const pitch = diameter + gap;
+  SOCKET_COUPONS.forEach((variant, i) => {
+    const sw = { stemCrossWidth: 4.1, stemCrossThickness: 1.3, socketOpening: 4.6, roundDiameter: 5.0, ...variant };
+    const socket = socketPolygons(sw);
+    const outer = cleanPolygon(circlePoints(diameter / 2, 64));
+    const b = new ShellBuilder();
+    b.face(outer, [], 0, false); // bottom (on the plate)
+    b.wall(outer, 0, height, false); // puck wall
+    addSocket(b, outer, height, height - depth, socket); // top ring, socket walls, ceiling facing up
+    const geometry = b.build();
+    geometry.computeVertexNormals();
+    geometry.computeBoundingBox();
+    parts.push({
+      name: variant.label,
+      geometry,
+      color,
+      print: { x: (i - (SOCKET_COUPONS.length - 1) / 2) * pitch, y: 0, flipX: false, keepLayoutInAssembly: true },
+    });
+  });
+  return { parts };
 }
 
 /**
@@ -409,8 +502,8 @@ export function buildReferenceSwitchGeometry(params) {
   frustum.translate(0, 0, plateTop + MX.FLANGE_THICKNESS + frustumH / 2 - 0.005);
   parts.push(frustum);
   const housingTop = plateTop + MX.UPPER_HOUSING;
-  parts.push(box(sw.stemCrossWidth, sw.stemCrossThickness, housingTop - 0.01, housingTop + sw.stemHeight));
-  parts.push(box(sw.stemCrossThickness, sw.stemCrossWidth, housingTop - 0.01, housingTop + sw.stemHeight));
+  parts.push(box(sw.stemCrossWidth, sw.stemCrossThickness, housingTop - 0.01, housingTop + MX.STEM_HEIGHT));
+  parts.push(box(sw.stemCrossThickness, sw.stemCrossWidth, housingTop - 0.01, housingTop + MX.STEM_HEIGHT));
   for (const p of parts) p.deleteAttribute('uv');
   const merged = mergeGeometries(parts, false);
   merged.computeVertexNormals();

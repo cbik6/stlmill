@@ -9,8 +9,9 @@
 // Part  = { name: 'body'|'cap'|'design', geometry: THREE.BufferGeometry (mm, Z up), color: '#rrggbb' }
 //   body   : rests on z = 0 with a solid floor, centred on XY (keychain ring, when enabled, is unioned in).
 //            The switch drops in from the top: flange on the plate, lower housing in a closed cavity below.
-//   cap    : bottom face z = 0, top face z = cap.thickness, stem socket down to -stemHeight.
-//            The UI should place it at z = assembly.capZ (seated on the switch) in the body frame.
+//   cap    : bottom face z = 0, top face z = cap.thickness, stem boss / socket down to -stemHeight.
+//            The UI should place it at z = assembly.capZ in the body frame: the seated position
+//            with the boss bottom on the switch's upper housing (capZ = plateTopZ + 6.6 + stemHeight).
 //   design : 'raised'  -> relief standing on the cap top (z = thickness .. thickness+designHeight)
 //            'inlay'   -> filler exactly filling a pocket in the cap top (z = thickness-designHeight .. thickness)
 //            'engraved'-> no design part (pocket only). Same frame as the cap in both cases.
@@ -27,6 +28,19 @@ import { computeLayout } from './outline.js';
 import { resolveHeights, buildBody, buildCapParts, buildReferenceSwitchGeometry, triangleCount } from './solids.js';
 
 export { exportThreeMF, exportStlZip, layoutForPrint } from './export.js';
+export { buildSocketCoupons, SOCKET_COUPONS, socketPolygons } from './solids.js';
+import { buildSocketCoupons as _buildSocketCoupons } from './solids.js';
+import { exportThreeMF as _exportThreeMF } from './export.js';
+
+/**
+ * Press-fit test plate as a 3MF Blob: six pucks (A straight 4.1, B straight 4.3,
+ * C tapered 4.6-4.1, D tapered 4.8-4.2, E round 5.0, F round 5.4), sockets facing up,
+ * one named object each. See buildSocketCoupons for the geometry.
+ */
+export async function exportSocketCoupons({ name = 'clicker-socket-coupons', ...opts } = {}) {
+  const { parts } = _buildSocketCoupons(opts);
+  return _exportThreeMF(parts, { name });
+}
 export { makeDesignFromText, makeDesignFromSvg, makeDesignFromImage, makeDesignFromShapes } from './design.js';
 export { traceBitmap } from './trace.js';
 export { MX } from './solids.js';
@@ -35,17 +49,25 @@ export const DEFAULT_PARAMS = {
   design: { spec: null, fill: 100 /* % of the available area the design fills */, rotation: 0 /* deg CCW */ },
   base: { style: 'outline' /* 'outline'|'circle'|'square'|'hexagon' */, size: 35 /* longest side, mm */, margin: 2.5 /* padding between design and cap edge */, cornerRadius: 4 },
   cap: { thickness: 3, designHeight: 1.0, designMode: 'inlay' /* 'inlay'|'raised'|'engraved' */ },
-  // rimHeight 7.0: the MX upper housing stands 6.6 mm above the plate, so the cap's underside
-  // seats 0.4 mm below the rim and is guided by the body wall. height 18.5 = 1.5 floor +
-  // 8.5 cavity (5.0 lower housing + 3.3 pins + play) + 1.5 plate + 7.0 rim.
-  body: { height: 18.5, rimHeight: 7.0, wall: 2.5 },
+  // rimHeight 11.0: the MX upper housing stands 6.6 mm above the plate and the cap's stem boss
+  // (socket depth 4.0) rests on it, so the cap's underside slab seats at 10.6 mm above the plate,
+  // 0.4 mm below the rim, guided by the body wall. height 22.5 = 1.5 floor + 8.5 cavity
+  // (5.0 lower housing + 3.3 pins + play) + 1.5 plate + 11.0 rim.
+  body: { height: 22.5, rimHeight: 11.0, wall: 2.5 },
   switch: {
     cutout: 14 /* nominal plate cutout, no tolerance (clips grip it) */,
     pocket: 15.6 /* switch FLANGE width above the plate; the cap recess must clear it */,
     cavity: 14.8 /* closed cavity under the plate for the lower housing + sprung clips (+2*switchTolerance) */,
     cavityDepth: 8.5 /* from the plate underside down; never breaks the 1.5 mm floor */,
     plateThickness: 1.5,
-    stemCrossWidth: 4.1, stemCrossThickness: 1.3, stemOuterDiameter: 5.5, stemHeight: 3.6,
+    // stem socket (measured on real printed caps): a tapered cross grips best
+    socketMode: 'tapered' /* 'tapered'|'cross'|'round' */,
+    stemCrossWidth: 4.1 /* cross width at the socket ceiling */,
+    stemCrossThickness: 1.3,
+    socketOpening: 4.6 /* cross width at the opening ('tapered' only) */,
+    roundDiameter: 5.0 /* hole diameter ('round' only, glue fit) */,
+    stemOuterDiameter: 7.0 /* boss around the socket; 7.0 keeps a 1 mm wall for every default socket (auto-widened with a warning if too small) */,
+    stemHeight: 4.0 /* socket depth */,
   },
   keychain: { enabled: false, outerRadius: 4.5, innerRadius: 2.2, angle: 90 /* deg around the base; 90 = top (+Y) */ },
   fit: { clearance: 0.3 /* cap-to-recess gap per side */, switchTolerance: 0.15 /* added per side to the pocket */ },

@@ -195,7 +195,7 @@ function describeObjects(parts) {
     index: i,
     name: p.name,
     color: normalizeColor(p.color),
-    extruder: EXTRUDER_BY_PART[p.name] || i + 1,
+    extruder: EXTRUDER_BY_PART[p.name] || 1,
     part: p,
   }));
 }
@@ -399,6 +399,10 @@ export async function exportThreeMF(resultOrParts, { name = 'clicker' } = {}) {
     const lead = g.parts[0];
     const laid = parts.find((p) => p.name === lead.name);
     const src = srcParts.find((p) => p.name === lead.name);
+    if (src && src.print && src.print.keepLayoutInAssembly) {
+      assembleTransforms.set(g.id, IDENTITY); // e.g. test coupons: assembly == plate layout
+      continue;
+    }
     let z = src && src.print && typeof src.print.assembleZ === 'number' ? src.print.assembleZ : 0;
     if (!z && lead.name !== 'body' && assembly && typeof assembly.capZ === 'number') z = assembly.capZ;
     assembleTransforms.set(g.id, assembleTransform(laid && laid.bake, z));

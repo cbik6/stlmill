@@ -128,6 +128,26 @@ export class ShellBuilder {
     }
   }
 
+  /**
+   * Ruled surface between polygon `bottom` at z0 and polygon `top` at z1 (same vertex count,
+   * vertices paired by index, both CCW). Same orientation rules as wall(). Used for tapered sockets.
+   */
+  loft(bottom, top, z0, z1, inward = false) {
+    const n = bottom.length;
+    if (top.length !== n) throw new Error('loft: polygons must have the same vertex count');
+    for (let i = 0; i < n; i++) {
+      const p = bottom[i], q = bottom[(i + 1) % n];
+      const P = top[i], Q = top[(i + 1) % n];
+      if (inward) {
+        this.tri(p.x, p.y, z0, Q.x, Q.y, z1, q.x, q.y, z0);
+        this.tri(p.x, p.y, z0, P.x, P.y, z1, Q.x, Q.y, z1);
+      } else {
+        this.tri(p.x, p.y, z0, q.x, q.y, z0, Q.x, Q.y, z1);
+        this.tri(p.x, p.y, z0, Q.x, Q.y, z1, P.x, P.y, z1);
+      }
+    }
+  }
+
   /** Planar polygon `outer` minus `holes` at height z, facing +Z (up) or -Z. */
   face(outer, holes, z, up = true) {
     const contour = outer.map((p) => new THREE.Vector2(p.x, p.y));
