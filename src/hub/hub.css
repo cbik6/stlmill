@@ -1,0 +1,987 @@
+/* ==========================================================================
+   Hub (landing page): a workshop pegboard. Every live generator hangs as a
+   printed PLA swatch card on a steel peg; every future tool is a shadow-board
+   outline on an empty peg. Tokens live in ../shared/base.css.
+   ========================================================================== */
+
+/* ---- The board ---------------------------------------------------------- */
+body.board {
+  color: var(--ink);
+  font-family: var(--font-sans);
+  background-color: var(--board);
+  /* Drilled holes on a 48 px grid: floor, a heavier shadow at the top lip,
+     a lit lip at the bottom. First layer paints on top. */
+  background-image:
+    radial-gradient(circle at 24px 24.6px, var(--hole) 0 4.4px, transparent 5px),
+    radial-gradient(circle at 24px 23.6px, var(--hole-shade) 0 4.9px, transparent 5.5px),
+    radial-gradient(circle at 24px 25.4px, var(--hole-rim) 0 5.2px, transparent 5.9px);
+  background-size: var(--board-grid) var(--board-grid);
+  overflow-x: hidden;
+}
+
+main {
+  padding: 48px 48px 112px;
+}
+
+/* ---- Pinned swatches (brand, utility, section labels) ------------------- */
+.pins {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 40px 48px 0;
+}
+
+.pinned {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px 14px 16px;
+  border-radius: 6px;
+  background: var(--pla-white);
+  color: var(--ink);
+  box-shadow: 0 8px 14px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  text-decoration: none;
+}
+
+.pinned:hover {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.pin {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--steel);
+  box-shadow: inset 0 1px 1px var(--steel-hi), 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.brand .mark {
+  width: 30px;
+  height: 30px;
+  color: var(--ink);
+  flex: none;
+}
+
+.wordmark {
+  font-family: var(--font-brand);
+  font-weight: 700;
+  font-size: 26px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.utility {
+  gap: 8px;
+  padding: 10px 12px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.util-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  line-height: 1;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.util-link:hover {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--brand-orange);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
+.util-link svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.util-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--white-ink-2);
+  opacity: 0.4;
+}
+
+/* Section label on the board: a small printed label pinned beside the row. */
+.board-stamp {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  margin: 0;
+  padding: 10px 18px 10px 20px;
+  border-radius: 6px;
+  background: var(--pla-white);
+  color: var(--ink);
+  box-shadow: 0 8px 14px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 0 var(--white-emb-hi);
+}
+
+.board-stamp::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--steel);
+  box-shadow: inset 0 1px 1px var(--steel-hi), 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+/* ---- Hangers: a peg, and a card with a hole through it ------------------ */
+.hanger {
+  position: relative;
+  min-width: 0; /* grid/flex child: never let intrinsic widths (e.g. an <input>) force overflow */
+  list-style: none;
+}
+
+.peg {
+  position: absolute;
+  z-index: 2;
+  top: 17px;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--steel);
+  box-shadow: inset 0 2px 2px var(--steel-hi), 0 1px 2px rgba(0, 0, 0, 0.5);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.swatch {
+  position: relative;
+  border-radius: 10px;
+  color: var(--ink);
+  box-shadow: 0 22px 36px rgba(0, 0, 0, 0.35), inset 0 2px 0 rgba(255, 255, 255, 0.25);
+  transition:
+    transform 160ms cubic-bezier(0.23, 1, 0.32, 1),
+    box-shadow 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.swatch-orange { background: var(--brand-orange); }
+.swatch-teal { background: var(--filament-teal); }
+.swatch-white {
+  background: var(--pla-white);
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+/* The one authored moment: hover lifts the card off its peg. The peg stays. */
+.hanger:hover > .swatch {
+  transform: translateY(-4px);
+  box-shadow: 0 30px 44px rgba(0, 0, 0, 0.42), inset 0 2px 0 rgba(255, 255, 255, 0.25);
+}
+
+.hanger:hover > .swatch-white {
+  box-shadow: 0 16px 26px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.hole {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  border-radius: 50%;
+  background: var(--board);
+  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.45);
+}
+
+.hole-side {
+  top: 50%;
+  left: 24px;
+  margin: -8px 0 0;
+}
+
+.hanger-tag > .peg {
+  top: calc(50% - 9px);
+  left: 24px;
+}
+
+/* ---- Embossed type ------------------------------------------------------ */
+.emb {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+
+.emb-orange {
+  color: var(--orange-emb);
+  text-shadow: 0 1px 0 var(--orange-emb-hi);
+}
+
+.emb-teal {
+  color: var(--teal-emb);
+  text-shadow: 0 1px 0 var(--teal-emb-hi);
+}
+
+.emb-ink {
+  color: var(--ink);
+  text-shadow: 0 1px 0 var(--white-emb-hi);
+}
+
+/* Unlit: the outline colour, no highlight. */
+.emb-outline {
+  color: var(--hole);
+  letter-spacing: 0.06em;
+}
+
+/* ---- Tabs: the card's own black action tab on its bottom edge ----------- */
+.tab {
+  position: absolute;
+  left: 40px;
+  bottom: -26px;
+  display: inline-flex;
+  align-items: center;
+  height: 72px;
+  padding: 0 36px;
+  border-radius: 0 0 12px 12px;
+  background: var(--ink);
+  color: var(--tab-text);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.3);
+  transition: transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.tab:hover {
+  color: var(--tab-text);
+  text-decoration: none;
+}
+
+.tab:active {
+  transform: scale(0.97);
+}
+
+.tab-arrow {
+  margin-left: 18px;
+  color: var(--brand-orange);
+}
+
+/* ---- Focus: ink ring on the cards, orange ring on the board ------------- */
+.swatch :focus-visible,
+.pinned:focus-visible,
+.pinned :focus-visible,
+.board-stamp:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 3px;
+}
+
+main :focus-visible {
+  outline-color: var(--brand-orange);
+}
+
+.swatch :focus-visible {
+  outline-color: var(--ink);
+}
+
+/* ---- Row 1: the wall ---------------------------------------------------- */
+.wall {
+  display: grid;
+  grid-template-columns: minmax(0, 780px) minmax(440px, 1fr);
+  column-gap: 72px;
+  align-items: stretch;
+}
+
+.live-tools {
+  display: grid;
+  gap: 72px;
+  align-content: start;
+}
+
+.hanger-hero,
+.hanger[data-tool] {
+  margin-bottom: 26px; /* room for the tab hanging below the card */
+}
+
+.aside-col {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 40px;
+}
+
+/* Shadow outlines */
+.shadows {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 30px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shadow {
+  position: relative;
+  min-height: 250px;
+  border: 4px dashed var(--hole);
+  border-radius: 10px;
+  opacity: 0.92;
+}
+
+.shadow:nth-child(3n) {
+  min-height: 230px;
+}
+
+.shadow > .peg {
+  top: 13px;
+}
+
+.shadow > .hole {
+  top: 14px;
+}
+
+.hole-dashed {
+  background: transparent;
+  border: 3px dashed var(--hole);
+  box-shadow: none;
+}
+
+.shadow-label {
+  position: absolute;
+  right: 0;
+  bottom: 30px;
+  left: 0;
+  padding: 0 12px;
+  font-size: clamp(22px, 2.6vw, 40px);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.noscript-note {
+  grid-column: 1 / -1;
+  padding: 20px 24px;
+  border-radius: 8px;
+  background: var(--pla-white);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* The hanging tag */
+.hanger-tag {
+  align-self: end;
+  max-width: 520px;
+}
+
+.tag {
+  padding: 22px 28px 22px 60px;
+  font-size: 19px;
+  line-height: 1.4;
+}
+
+.tag p {
+  margin: 0;
+}
+
+.tag-lead {
+  margin-bottom: 4px;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.tag-line {
+  color: var(--white-ink-2);
+}
+
+.tag a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--brand-orange);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.tag a:hover {
+  color: var(--ink);
+  text-decoration-color: var(--ink);
+}
+
+/* ---- The Clicker card --------------------------------------------------- */
+.hero-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 280px);
+  grid-template-rows: 1fr auto;
+  grid-template-areas:
+    "head demo"
+    "text size";
+  column-gap: 40px;
+  row-gap: 44px;
+  min-height: 620px;
+  padding: 52px 40px 112px;
+}
+
+.hero-head,
+.hero-demo,
+.hero-text,
+.hero-size {
+  min-width: 0;
+}
+
+.hero-head {
+  grid-area: head;
+  align-self: start;
+}
+
+.hero-label {
+  font-size: clamp(56px, 6.4vw, 92px);
+}
+
+.hero-sub {
+  max-width: 420px;
+  margin: 28px 0 0;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--orange-ink-soft);
+}
+
+.hero-demo {
+  grid-area: demo;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.demo {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  min-height: 240px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.demo canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.hero-text {
+  grid-area: text;
+  align-self: end;
+}
+
+.hero-size {
+  grid-area: size;
+  align-self: end;
+}
+
+.ctl-label {
+  display: block;
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--orange-ink);
+}
+
+.ctl-hint {
+  display: block;
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.3;
+  color: var(--orange-ink);
+}
+
+.hero-card .field-input {
+  width: 100%;
+  min-width: 0;
+  height: 88px;
+  min-height: 0;
+  padding: 0 24px;
+  border: 3px solid var(--orange-ink-soft);
+  border-radius: 8px;
+  background: var(--orange-field);
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 52px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  box-shadow: inset 0 2px 4px rgba(90, 42, 14, 0.18);
+  transition: none;
+}
+
+.hero-card .field-input:focus {
+  border-color: var(--ink);
+  box-shadow: inset 0 2px 4px rgba(90, 42, 14, 0.18);
+}
+
+.hero-card .field-input:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.hero-card .field-input::placeholder {
+  color: var(--orange-ink);
+  opacity: 0.6;
+}
+
+.readout {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 88px;
+}
+
+.digit {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 64px;
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--orange-emb-hi);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 44px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  will-change: transform;
+}
+
+.unit {
+  margin-left: 6px;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--orange-ink-soft);
+}
+
+.hero-card .range-input {
+  width: 100%;
+  height: 28px;
+  margin: 10px 0 0;
+}
+
+.hero-card .range-input::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--orange-ink);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.hero-card .range-input::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--orange-ink);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.hero-card .range-input::-webkit-slider-thumb {
+  width: 22px;
+  height: 22px;
+  margin-top: -8px;
+  border: 3px solid var(--orange-field);
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+  transition: none;
+}
+
+.hero-card .range-input::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 3px solid var(--orange-field);
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+}
+
+.hero-card .range-input:hover::-webkit-slider-thumb {
+  transform: none;
+}
+
+.hero-card .range-input:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px var(--brand-orange), 0 0 0 6px var(--ink);
+}
+
+.hero-card .range-input:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px var(--brand-orange), 0 0 0 6px var(--ink);
+}
+
+/* Generic live card (any further 'live' tool rendered from tools.js) */
+.generic-card {
+  min-height: 300px;
+  padding: 52px 40px 100px;
+}
+
+.card-label {
+  font-size: clamp(44px, 4.4vw, 64px);
+}
+
+.card-sub {
+  max-width: 420px;
+  margin: 20px 0 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.swatch-orange .card-sub { color: var(--orange-ink-soft); }
+.swatch-teal .card-sub { color: var(--teal-ink); }
+.swatch-white .card-sub { color: var(--white-ink-2); }
+.swatch-white .emb-white { color: var(--ink); text-shadow: 0 1px 0 var(--white-emb-hi); }
+
+/* ---- Row 2: how it works + fit ------------------------------------------ */
+.row2 {
+  display: grid;
+  grid-template-columns: minmax(0, 780px) minmax(440px, 1fr);
+  grid-template-areas:
+    "stamp stamp"
+    "steps fit";
+  column-gap: 72px;
+  row-gap: 40px;
+  align-items: start;
+  margin-top: 136px;
+}
+
+.row2 > .board-stamp {
+  grid-area: stamp;
+}
+
+.steps {
+  grid-area: steps;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  min-height: 250px;
+  padding: 48px 24px 28px;
+}
+
+.step-icon {
+  width: 36px;
+  height: 36px;
+  margin: 0 0 22px;
+  color: var(--ink);
+}
+
+.step-title {
+  margin: 0 0 8px;
+  font-size: 26px;
+  letter-spacing: 0;
+}
+
+.step-text {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.45;
+  color: var(--white-ink-2);
+}
+
+.hanger-fit {
+  grid-area: fit;
+}
+
+.fit {
+  min-height: 250px;
+  padding: 48px 32px 32px;
+}
+
+.fit-label {
+  font-size: 56px;
+}
+
+.fit-list {
+  display: grid;
+  gap: 12px;
+  margin: 24px 0 0;
+  font-size: 17px;
+  line-height: 1.4;
+}
+
+.fit-row {
+  display: grid;
+  grid-template-columns: 136px minmax(0, 1fr);
+  gap: 16px;
+}
+
+.fit-row dt {
+  padding-top: 3px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--teal-ink);
+}
+
+.fit-row dd {
+  margin: 0;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* ---- 900–1279: the shadow outlines drop under the hero card ------------- */
+@media (max-width: 1279px) {
+  .wall,
+  .row2 {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 48px;
+  }
+
+  .row2 {
+    grid-template-areas:
+      "stamp"
+      "steps"
+      "fit";
+  }
+
+  .live-tools {
+    max-width: 900px;
+  }
+
+  .aside-col {
+    grid-template-rows: auto auto;
+    gap: 48px;
+  }
+
+  .shadows {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+  }
+
+  .shadow,
+  .shadow:nth-child(3n) {
+    min-height: 220px;
+  }
+
+  .hanger-tag {
+    align-self: start;
+  }
+
+  .hanger-fit {
+    max-width: 780px;
+  }
+}
+
+/* ---- < 900: one column, 16 px gutters ----------------------------------- */
+@media (max-width: 899px) {
+  main {
+    padding: 32px 16px 80px;
+  }
+
+  .pins {
+    padding: 16px 16px 0;
+  }
+
+  .pinned {
+    padding: 10px 14px 10px 12px;
+    gap: 10px;
+  }
+
+  .brand .mark {
+    width: 24px;
+    height: 24px;
+  }
+
+  .wordmark {
+    font-size: 22px;
+  }
+
+  .utility {
+    padding: 6px 6px;
+    font-size: 13px;
+  }
+
+  .util-link span {
+    display: none;
+  }
+
+  .util-link {
+    padding: 8px;
+  }
+
+  .wall {
+    row-gap: 40px;
+  }
+
+  .hero-card {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas:
+      "head"
+      "demo"
+      "text"
+      "size";
+    row-gap: 28px;
+    min-height: 0;
+    padding: 44px 20px 92px;
+  }
+
+  .hero-label {
+    font-size: clamp(48px, 15vw, 64px);
+  }
+
+  .hero-sub {
+    margin-top: 16px;
+    font-size: 20px;
+  }
+
+  .hero-demo {
+    justify-content: stretch;
+  }
+
+  .demo {
+    width: 100%;
+    height: 320px;
+    min-height: 320px;
+    aspect-ratio: auto;
+  }
+
+  .hero-card .field-input {
+    height: 72px;
+    padding: 0 18px;
+    font-size: 40px;
+  }
+
+  .readout {
+    height: auto;
+  }
+
+  .tab {
+    left: 20px;
+    bottom: -22px;
+    height: 60px;
+    padding: 0 24px;
+    font-size: 22px;
+  }
+
+  .tab-arrow {
+    margin-left: 12px;
+  }
+
+  .hanger-hero,
+  .hanger[data-tool] {
+    margin-bottom: 22px;
+  }
+
+  .aside-col {
+    gap: 40px;
+  }
+
+  .shadows {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .shadow,
+  .shadow:nth-child(3n) {
+    min-height: 150px;
+    border-width: 3px;
+  }
+
+  .shadow-label {
+    bottom: 18px;
+    padding: 0 6px;
+    font-size: clamp(16px, 5vw, 24px);
+    letter-spacing: 0.04em;
+  }
+
+  .hanger-tag {
+    max-width: none;
+  }
+
+  .tag {
+    padding: 20px 20px 20px 52px;
+    font-size: 17px;
+  }
+
+  .tag-lead {
+    font-size: 20px;
+  }
+
+  .row2 {
+    margin-top: 80px;
+    row-gap: 32px;
+  }
+
+  .board-stamp {
+    font-size: 18px;
+  }
+
+  .steps {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+
+  .step {
+    min-height: 0;
+    padding: 44px 20px 24px;
+  }
+
+  .fit {
+    padding: 44px 20px 24px;
+  }
+
+  .fit-label {
+    font-size: 44px;
+  }
+
+  .fit-row {
+    grid-template-columns: 112px minmax(0, 1fr);
+    gap: 12px;
+  }
+}
+
+/* ---- Motion ------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .swatch,
+  .tab {
+    transition: none;
+  }
+
+  .hanger:hover > .swatch {
+    transform: none;
+  }
+}

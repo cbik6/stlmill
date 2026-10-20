@@ -1,0 +1,308 @@
+// 2D layout: turns a DesignSpec + params into mm-space outlines for the body, the
+// cap recess, the cap and the (scaled, rotated, centred) design.
+//
+// Coordinate system: mm, +Y up, design centre at the origin (the switch stem / pocket
+// are also at the origin, so the switch always sits under the middle of the design).
+//
+// Outline style ('outline'):
+//   cap    = design (+) margin                       (morphological dilation with a disc)
+//   recess = cap (+) clearance
+//   body   = cap (+) wall + clearance
+//   The cap is additionally OR-ed with a minimum rounded-square envelope of side
+//   pocket + 2*switchTolerance so the body always encloses the switch pocket and the
+//   recess always clears the 14 mm upper housing, even for very narrow designs.
+//   Longest side of the body == base.size when fill == 100 (design long side is then
+//   size - 2*(margin + wall + clearance)). fill < 100 shrinks design and body together.
+//
+// Preset styles ('circle' | 'square' | 'hexagon'):
+//   body   = preset with longest side == base.size
+//   recess = preset inset by wall
+//   cap    = preset inset by wall + clearance
+//   design long side = (cap long side - 2*margin) * fill/100, clipped to the cap by CSG later.
+
+import * as THREE from 'three';
+import { rasterizeShapes, rasterizePolygonsEvenOdd, dilateMask, convexHull } from './raster.js';
+import { traceBitmap, shapesBBox } from './trace.js';
+
+const WORK_PX = 1000; // px across the base's long side for the outline raster
+
+export function pointsToShape(outer, holes = []) {
+  const s = new THREE.Shape(outer.map((p) => new THREE.Vector2(p.x, p.y)));
+  for (const h of holes) s.holes.push(new THREE.Path(h.map((p) => new THREE.Vector2(p.x, p.y))));
+  return s;
+}
+
+/** Sample any shapes (curves allowed) into pure polyline shapes. */
+export function polylineShapes(shapes, curveSegments = 24) {
+  return shapes.map((s) => {
+    const pts = s.extractPoints(curveSegments);
+    return pointsToShape(pts.shape, pts.holes);
+  });
+}
+
+/** Apply fn(Vector2) -> {x,y} to every vertex of polyline shapes, returning new shapes. */
+export function transformShapes(shapes, fn) {
+  return shapes.map((s) => {
+    const pts = s.extractPoints(1);
+    return pointsToShape(pts.shape.map(fn), pts.holes.map((h) => h.map(fn)));
+  });
+}
+
+export function circlePoints(r, n = 96) {
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    pts.push({ x: r * Math.cos(a), y: r * Math.sin(a) });
+  }
+  return pts;
+}
+
+export function roundedRectPoints(hw, hh, r, segs = 10) {
+  r = Math.max(0, Math.min(r, hw, hh));
+  const pts = [];
+  const corners = [
+    [hw - r, hh - r, 0],
+    [-hw + r, hh - r, Math.PI / 2],
+    [-hw + r, -hh + r, Math.PI],
+    [hw - r, -hh + r, (3 * Math.PI) / 2],
+  ];
+  for (const [cx, cy, a0] of corners) {
+    if (r <= 1e-6) {
+      pts.push({ x: cx, y: cy });
+      continue;
+    }
+    for (let i = 0; i <= segs; i++) {
+      const a = a0 + (i / segs) * (Math.PI / 2);
+      pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
+    }
+  }
+  return pts;
+}
+
+/** Regular hexagon, vertex at +Y, circumradius R (height = 2R, width = sqrt(3) R). */
+export function hexagonPoints(R) {
+  const pts = [];
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 2 + (i * Math.PI) / 3;
+    pts.push({ x: R * Math.cos(a), y: R * Math.sin(a) });
+  }
+  return pts;
+}
+
+/** Preset outline polygon with the given inset (mm) from the nominal size. */
+function presetPoints(style, size, cornerRadius, inset) {
+  switch (style) {
+    case 'circle':
+      return circlePoints(Math.max(0.5, size / 2 - inset), 128);
+    case 'hexagon':
+      return hexagonPoints(Math.max(0.5, size / 2 - inset / Math.cos(Math.PI / 6)));
+    case 'square':
+    default: {
+      const h = Math.max(0.5, size / 2 - inset);
+      return roundedRectPoints(h, h, Math.max(0, cornerRadius - inset), 12);
+    }
+  }
+}
+
+function bboxOfPoints(pts) {
+  const b = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+  for (const p of pts) {
+    if (p.x < b.minX) b.minX = p.x;
+    if (p.x > b.maxX) b.maxX = p.x;
+    if (p.y < b.minY) b.minY = p.y;
+    if (p.y > b.maxY) b.maxY = p.y;
+  }
+  return b;
+}
+
+function allPoints(shapes) {
+  const out = [];
+  for (const s of shapes) {
+    const pts = s.extractPoints(1);
+    out.push(...pts.shape);
+    for (const h of pts.holes) out.push(...h);
+  }
+  return out;
+}
+
+export function pointInPolygon(p, pts) {
+  let inside = false;
+  const n = pts.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const a = pts[i];
+    const b = pts[j];
+    if ((a.y > p.y) !== (b.y > p.y) && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+/** Minimum distance from the origin to the polygon boundary. */
+export function minDistanceToPolygon(pts) {
+  let best = Infinity;
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % n];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    let t = len2 > 0 ? -(a.x * dx + a.y * dy) / len2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    const d = Math.hypot(a.x + t * dx, a.y + t * dy);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+/**
+ * Compute the 2D layout.
+ * Returns {
+ *   style, bodyShape, recessShape, capShape   THREE.Shape (mm, polyline, no holes)
+ *   designShapes                              THREE.Shape[] (mm, with holes) - [] when no design
+ *   designLong, capLong, baseLong             mm
+ *   bodyPoints, capPoints                     outer polygons as {x,y}[] (for ring placement etc.)
+ * }
+ */
+export function computeLayout(spec, params, warnings = []) {
+  const { base, design, body, fit } = params;
+  const sw = params.switch;
+  let style = base.style;
+  const size = Math.max(5, base.size);
+  const margin = Math.max(0, base.margin);
+  const wall = Math.max(0.8, body.wall);
+  const clearance = Math.max(0, fit.clearance);
+  const fill = Math.max(1, Math.min(200, design.fill)) / 100;
+
+  // --- design in its own units -> rotated, centred polylines ---------------------------------
+  let designUnit = spec && spec.shapes && spec.shapes.length ? polylineShapes(spec.shapes, 24) : [];
+  if (designUnit.length === 0 && style === 'outline') {
+    style = 'circle';
+    if (spec) warnings.push('Design is empty; using a circular base instead of an outline.');
+  }
+  let designLongUnits = 0;
+  if (designUnit.length) {
+    const b0 = bboxOfPoints(allPoints(designUnit));
+    const cx = (b0.minX + b0.maxX) / 2;
+    const cy = (b0.minY + b0.maxY) / 2;
+    const rot = ((design.rotation || 0) * Math.PI) / 180;
+    const c = Math.cos(rot);
+    const s = Math.sin(rot);
+    designUnit = transformShapes(designUnit, (p) => {
+      const x = p.x - cx;
+      const y = p.y - cy;
+      return { x: x * c - y * s, y: x * s + y * c };
+    });
+    const b1 = bboxOfPoints(allPoints(designUnit));
+    designUnit = transformShapes(designUnit, (p) => ({
+      x: p.x - (b1.minX + b1.maxX) / 2,
+      y: p.y - (b1.minY + b1.maxY) / 2,
+    }));
+    designLongUnits = Math.max(b1.maxX - b1.minX, b1.maxY - b1.minY);
+  }
+
+  const envelopeSide = sw.pocket + 2 * fit.switchTolerance;
+  const envelopeHalfDiag = (envelopeSide / 2) * Math.SQRT2;
+
+  let designLong;
+  let capLong;
+  let bodyShape;
+  let recessShape;
+  let capShape;
+  let designShapes = [];
+
+  if (style === 'outline') {
+    const pad = margin + wall + clearance;
+    const avail = size - 2 * pad;
+    if (avail < 2) {
+      warnings.push(`Base size ${size} mm is too small for margin + wall + clearance (${pad.toFixed(1)} mm per side); design was clamped to 2 mm.`);
+    }
+    designLong = Math.max(2, avail) * fill;
+    const sUnit = designLongUnits > 0 ? designLong / designLongUnits : 1;
+    designShapes = transformShapes(designUnit, (p) => ({ x: p.x * sUnit, y: p.y * sUnit }));
+
+    // --- raster space -------------------------------------------------------------------
+    const envBody = envelopeSide + 2 * (wall + clearance);
+    const extent = Math.max(size, envBody, designLong + 2 * pad);
+    const k = WORK_PX / extent; // px per mm
+    const W = Math.ceil(extent * k) + 64;
+    const H = W;
+    const toPx = (p) => ({ x: p.x * k + W / 2, y: p.y * k + H / 2 });
+    const toMm = (p) => ({ x: (p.x - W / 2) / k, y: (p.y - H / 2) / k });
+
+    const designMask = rasterizeShapes(transformShapes(designShapes, toPx), W, H);
+    let capMask = dilateMask(designMask, W, H, margin * k);
+    const envPts = roundedRectPoints(envelopeSide / 2, envelopeSide / 2, Math.min(2.5, base.cornerRadius), 8).map(toPx);
+    rasterizePolygonsEvenOdd([envPts], W, H, capMask);
+
+    let capTraced = traceBitmap(capMask, W, H, { simplifyTolerance: 0.75, minArea: 4 });
+    if (capTraced.length > 1) {
+      warnings.push('Design has separated parts; the base was filled to their convex hull so it prints as one piece.');
+      const hull = convexHull(allPoints(capTraced));
+      rasterizePolygonsEvenOdd([hull], W, H, capMask);
+      capTraced = traceBitmap(capMask, W, H, { simplifyTolerance: 0.75, minArea: 4 });
+    }
+    const recessMask = dilateMask(capMask, W, H, clearance * k);
+    const bodyMask = dilateMask(capMask, W, H, (wall + clearance) * k);
+    const recessTraced = traceBitmap(recessMask, W, H, { simplifyTolerance: 0.75, minArea: 4 });
+    const bodyTraced = traceBitmap(bodyMask, W, H, { simplifyTolerance: 0.75, minArea: 4 });
+
+    const pickOuter = (traced) => {
+      let best = null;
+      for (const s of traced) if (!best || (s.userData.area || 0) > (best.userData.area || 0)) best = s;
+      return best.getPoints(1).map(toMm);
+    };
+    const capPts = pickOuter(capTraced);
+    const recessPts = pickOuter(recessTraced);
+    const bodyPts = pickOuter(bodyTraced);
+    capShape = pointsToShape(capPts);
+    recessShape = pointsToShape(recessPts);
+    bodyShape = pointsToShape(bodyPts);
+    const cb = bboxOfPoints(capPts);
+    capLong = Math.max(cb.maxX - cb.minX, cb.maxY - cb.minY);
+  } else {
+    if (!['circle', 'square', 'hexagon'].includes(style)) {
+      warnings.push(`Unknown base style "${style}", using "circle".`);
+      style = 'circle';
+    }
+    const bodyPts = presetPoints(style, size, base.cornerRadius, 0);
+    const recessPts = presetPoints(style, size, base.cornerRadius, wall);
+    const capPts = presetPoints(style, size, base.cornerRadius, wall + clearance);
+    bodyShape = pointsToShape(bodyPts);
+    recessShape = pointsToShape(recessPts);
+    capShape = pointsToShape(capPts);
+    capLong = size - 2 * (wall + clearance);
+    const avail = capLong - 2 * margin;
+    if (avail < 2) warnings.push(`Base size ${size} mm leaves no room for the design inside the cap; design was clamped to 2 mm.`);
+    designLong = Math.max(2, avail) * fill;
+    const sUnit = designLongUnits > 0 ? designLong / designLongUnits : 1;
+    designShapes = transformShapes(designUnit, (p) => ({ x: p.x * sUnit, y: p.y * sUnit }));
+  }
+
+  const capPoints = capShape.getPoints(1);
+  const bodyPoints = bodyShape.getPoints(1);
+  // The recess (cap + clearance) must contain the switch envelope square so the upper
+  // housing clears the body: test the envelope's (slightly shrunk) rounded corners.
+  const envTest = roundedRectPoints(envelopeSide / 2 - 0.15, envelopeSide / 2 - 0.15, Math.min(2.5, base.cornerRadius), 6);
+  if (!envTest.every((p) => pointInPolygon(p, capPoints))) {
+    const needCircle = 2 * (envelopeHalfDiag + wall + clearance);
+    warnings.push(
+      `Cap is too small to clear the switch (pocket ${envelopeSide.toFixed(1)} mm): increase the base size (a circle needs at least ${needCircle.toFixed(1)} mm) or use a smaller wall.`,
+    );
+  }
+  const bb = bboxOfPoints(bodyPoints);
+
+  return {
+    style,
+    bodyShape,
+    recessShape,
+    capShape,
+    designShapes,
+    designLong: designShapes.length ? designLong : 0,
+    capLong,
+    baseLong: Math.max(bb.maxX - bb.minX, bb.maxY - bb.minY),
+    bodyPoints,
+    capPoints,
+  };
+}
+
+export { shapesBBox };

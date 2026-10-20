@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+
+# Impeccable working files (keep PRODUCT.md, surface briefs and the decision payload)
+.impeccable/review/
+.impeccable/mocks/
+.impeccable/config.local.json
+.impeccable/live/

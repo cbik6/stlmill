@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>STLmill — Free generators for things you can print</title>
+    <meta
+      name="description"
+      content="STLmill is a collection of free, browser-based generators for 3D-printable things. No sign-up, no install — type it, preview it in 3D and download a print-ready 3MF or STL."
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#a47a52" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#6b4d33" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <!-- Fonts are self-hosted (public/fonts); nothing on this site talks to a third party. -->
+    <link rel="preload" href="/fonts/barlow-semi-condensed-800-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/space-grotesk-700-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <!-- Apply a saved shop-light setting before first paint to avoid a flash. Mirrors src/shared/theme.js. -->
+    <script>
+      try {
+        var t = localStorage.getItem('stlmill-theme');
+        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    </script>
+  </head>
+  <body class="board">
+    <a class="skip-link" href="#tools">Skip to the tools</a>
+
+    <h1 class="visually-hidden">STLmill — free browser-based generators for 3D-printable things</h1>
+
+    <header class="pins">
+      <a class="pinned brand" href="./" aria-label="STLmill home">
+        <span class="pin" aria-hidden="true"></span>
+        <!-- Millstone mark: stone follows currentColor, facet is brand orange. Source: public/logo/stlmill-mark.svg -->
+        <svg class="mark" viewBox="0 0 120 120" aria-hidden="true">
+          <path fill="currentColor" fill-rule="evenodd" d="M60 8a52 52 0 1 1 0 104a52 52 0 1 1 0-104zM50 50v20h20V50z" />
+          <g stroke="#F07A2A" stroke-width="2.4" stroke-linecap="round" fill="none">
+            <line x1="60" y1="78" x2="60" y2="104" /><line x1="42" y1="60" x2="16" y2="60" /><line x1="78" y1="60" x2="104" y2="60" />
+            <line x1="47" y1="73" x2="29" y2="91" /><line x1="73" y1="73" x2="91" y2="91" /><line x1="47" y1="47" x2="29" y2="29" /><line x1="73" y1="47" x2="91" y2="29" />
+          </g>
+          <path fill="#F07A2A" d="M31 13.4A52 52 0 0 1 89 13.4L60 40z" />
+        </svg>
+        <span class="wordmark">STLmill</span>
+      </a>
+
+      <div class="pinned utility">
+        <span class="pin" aria-hidden="true"></span>
+        <a class="util-link" href="https://github.com/cbik6/stlmill" target="_blank" rel="noopener noreferrer">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 .5A12 12 0 0 0 8.2 23.9c.6.1.8-.3.8-.6v-2.2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4 18.3 4.3 18.3 4.3c.7 1.7.3 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .5z" />
+          </svg>
+          <span>GitHub</span>
+        </a>
+        <span class="util-sep" aria-hidden="true"></span>
+        <button class="util-link" id="theme-toggle" type="button" aria-label="Toggle shop light">
+          <svg data-icon="light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+          </svg>
+          <svg data-icon="dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
+            <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+          </svg>
+          <span>Shop light</span>
+        </button>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- ================= Row 1: the tool wall ================= -->
+      <section class="wall" id="tools" aria-labelledby="tools-heading">
+        <h2 id="tools-heading" class="visually-hidden">Tools</h2>
+
+        <!-- Live tools hang here as swatch cards. The Clicker card is authored in
+             place because it carries the live demo; src/hub/main.js renders any
+             other 'live' entry from src/hub/tools.js after it. -->
+        <div id="live-tools" class="live-tools">
+          <article class="hanger hanger-hero" data-tool="clicker">
+            <span class="peg" aria-hidden="true"></span>
+            <div class="swatch swatch-orange hero-card">
+              <span class="hole" aria-hidden="true"></span>
+
+              <div class="hero-head">
+                <h3 class="emb emb-orange hero-label">Clicker</h3>
+                <p class="hero-sub">A keyboard-switch fidget with your text on top. Type it, print it.</p>
+              </div>
+
+              <div class="hero-demo">
+                <div id="demo-clicker" class="demo" role="img" aria-label="Live 3D preview of the clicker with your text on the keycap"></div>
+              </div>
+
+              <div class="hero-text">
+                <label class="ctl-label" for="demo-text">Text on the cap</label>
+                <input
+                  class="field-input"
+                  id="demo-text"
+                  type="text"
+                  value="STL"
+                  maxlength="12"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  spellcheck="false"
+                  enterkeyhint="done"
+                  aria-describedby="demo-text-hint"
+                />
+                <span class="ctl-hint" id="demo-text-hint">Up to 12 characters</span>
+              </div>
+
+              <div class="hero-size">
+                <label class="ctl-label" for="demo-size">Cap width</label>
+                <div class="readout" aria-hidden="true">
+                  <span class="digit" data-digit="tens">3</span>
+                  <span class="digit" data-digit="ones">5</span>
+                  <span class="unit">mm</span>
+                </div>
+                <input
+                  class="range-input"
+                  id="demo-size"
+                  type="range"
+                  min="20"
+                  max="60"
+                  step="1"
+                  value="35"
+                  aria-valuetext="35 millimetres"
+                />
+              </div>
+
+              <a class="tab" href="./clicker/">Open the mill<span class="tab-arrow" aria-hidden="true">→</span></a>
+            </div>
+          </article>
+        </div>
+
+        <div class="aside-col">
+          <!-- Shadow-board outlines for tools with status 'soon' are rendered here from src/hub/tools.js. -->
+          <ul id="soon-tools" class="shadows" aria-label="Tools to come">
+            <noscript>
+              <li class="noscript-note">STLmill's generators need JavaScript. Please enable it to see the tools.</li>
+            </noscript>
+          </ul>
+
+          <aside class="hanger hanger-tag" aria-label="About STLmill">
+            <span class="peg" aria-hidden="true"></span>
+            <div class="swatch swatch-white tag">
+              <span class="hole hole-side" aria-hidden="true"></span>
+              <p class="tag-lead">Runs in your browser. Nothing uploaded, no account.</p>
+              <p class="tag-line">Files are for personal use.</p>
+              <p class="tag-line">
+                Made by Clark · <a href="#tip">leave a tip</a> ·
+                <a href="https://github.com/cbik6/stlmill" target="_blank" rel="noopener noreferrer">source on GitHub</a>
+              </p>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ================= Row 2: how it works + fit ================= -->
+      <section class="row2" aria-labelledby="how-heading">
+        <h2 id="how-heading" class="board-stamp">How it works</h2>
+
+        <ol class="steps">
+          <li class="hanger">
+            <span class="peg" aria-hidden="true"></span>
+            <div class="swatch swatch-white step">
+              <span class="hole" aria-hidden="true"></span>
+              <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="5" width="18" height="14" rx="2" />
+                <path d="M8 10h8M12 10v6" />
+              </svg>
+              <h3 class="emb emb-ink step-title">Type or upload</h3>
+              <p class="step-text">Your text, an SVG or an image goes on the cap.</p>
+            </div>
+          </li>
+          <li class="hanger">
+            <span class="peg" aria-hidden="true"></span>
+            <div class="swatch swatch-white step">
+              <span class="hole" aria-hidden="true"></span>
+              <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
+                <path d="M4 7.5l8 4.5 8-4.5M12 12v9" />
+              </svg>
+              <h3 class="emb emb-ink step-title">Preview in 3D</h3>
+              <p class="step-text">The model rebuilds as you adjust size, fit and colours.</p>
+            </div>
+          </li>
+          <li class="hanger">
+            <span class="peg" aria-hidden="true"></span>
+            <div class="swatch swatch-white step">
+              <span class="hole" aria-hidden="true"></span>
+              <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 3v11M7.5 9.5L12 14l4.5-4.5" />
+                <path d="M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V16" />
+              </svg>
+              <h3 class="emb emb-ink step-title">Download 3MF or STL</h3>
+              <p class="step-text">Open it in your slicer and print.</p>
+            </div>
+          </li>
+        </ol>
+
+        <article class="hanger hanger-fit" aria-labelledby="fit-heading">
+          <span class="peg" aria-hidden="true"></span>
+          <div class="swatch swatch-teal fit">
+            <span class="hole" aria-hidden="true"></span>
+            <h3 id="fit-heading" class="emb emb-teal fit-label">Fit</h3>
+            <dl class="fit-list">
+              <div class="fit-row"><dt>Switch</dt><dd>Cherry MX</dd></div>
+              <div class="fit-row"><dt>Clip-in cutout</dt><dd>14 mm</dd></div>
+              <div class="fit-row"><dt>Housing pocket</dt><dd>15.6 mm</dd></div>
+              <div class="fit-row"><dt>Exports</dt><dd>3MF with a colour per part, or STL as a zip of parts</dd></div>
+              <div class="fit-row"><dt>Slicers</dt><dd>Bambu Studio, PrusaSlicer, OrcaSlicer, Cura</dd></div>
+            </dl>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <script type="module" src="./src/hub/main.js"></script>
+  </body>
+</html>

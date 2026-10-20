@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-labelledby="t">
+  <title id="t">STLmill</title>
+  <!-- Stone: circle with a square "eye" cut out (even-odd hole, background shows through) -->
+  <path fill="currentColor" fill-rule="evenodd" d="M60 8a52 52 0 1 1 0 104a52 52 0 1 1 0-104zM50 50v20h20V50z"/>
+  <!-- Furrows: seven grooves radiating from the eye (top one omitted for the facet) -->
+  <g stroke="#F07A2A" stroke-width="2.4" stroke-linecap="round" fill="none">
+    <line x1="60" y1="78" x2="60" y2="104"/>
+    <line x1="42" y1="60" x2="16" y2="60"/>
+    <line x1="78" y1="60" x2="104" y2="60"/>
+    <line x1="47" y1="73" x2="29" y2="91"/>
+    <line x1="73" y1="73" x2="91" y2="91"/>
+    <line x1="47" y1="47" x2="29" y2="29"/>
+    <line x1="73" y1="47" x2="91" y2="29"/>
+  </g>
+  <!-- Facet: one STL triangle, the part being made -->
+  <path fill="#F07A2A" d="M31 13.4A52 52 0 0 1 89 13.4L60 40z"/>
+</svg>
