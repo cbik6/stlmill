@@ -27,12 +27,25 @@ const PLATE_THICKNESS = 1.5; // mm, top face at z = 0
 const PLATE_RADIUS = 6; // mm corner radius
 const PLATE_INSET = 4; // mm from the edge to the inset line
 const GRID_STEP = 10; // mm
-const PLATE_COLOR = 0x2b2b2b;
+// Material colour a notch under the page's flat #2b2b2b bench so the *lit* plate renders at
+// about that value and its edges melt into the CSS bench instead of reading as a lighter slab.
+const PLATE_COLOR = 0x232323;
 const GRID_OPACITY = 0.08;
 const INSET_OPACITY = 0.16;
 const CALLOUT_COLOR = 0xf07a2a;
 const CALLOUT_GAP = 5; // mm between the body and a dimension line
 const CALLOUT_TICK = 2.4; // mm end ticks
+const CALLOUT_LABEL_OFFSET = 1.5; // mm from the line to the label anchor
+// Where a label may sit along its dimension line (fraction of the line), nearest-to-centre first.
+const LABEL_SLOTS = [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8, 0.1, 0.9, 0, 1];
+const OBSTACLE_PAD = 4; // px kept clear around an obstacle rect
+// The plate (and its grid) fade out in the top band of the canvas so the far edge never
+// shows under the page's floating toolbar, whatever the orbit. Fractions of the canvas
+// height measured from the bottom: fully opaque below FADE_START, gone above FADE_END.
+const FADE_START = 0.78;
+const FADE_END = 0.93;
+const SHADOW_INTENSITY = 0.7; // key-light shadow strength with a full model
+const SHADOW_INTENSITY_BARE = 0.35; // with a bare body (no cap/design) the shadow reads as a blob
 const EXPLODE_CAP = 25; // mm
 const EXPLODE_SWITCH = 10; // mm
 // The engine's CSG output is non-indexed with flat per-face normals, so the thin facets on
@@ -93,6 +106,21 @@ function displayGeometry(geo) {
   }
 }
 
+/** Normalise a DOMRect / {x,y,width,height} / {left,top,right,bottom} to padded edges. */
+function toEdges(r, pad) {
+  if (!r) return null;
+  const left = Number.isFinite(r.left) ? r.left : r.x;
+  const top = Number.isFinite(r.top) ? r.top : r.y;
+  const right = Number.isFinite(r.right) ? r.right : left + (r.width || 0);
+  const bottom = Number.isFinite(r.bottom) ? r.bottom : top + (r.height || 0);
+  if (![left, top, right, bottom].every(Number.isFinite)) return null;
+  return { left: left - pad, top: top - pad, right: right + pad, bottom: bottom + pad };
+}
+
+function intersects(a, b) {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
 function offsetFor(az, el) {
   return new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.cos(az) * Math.cos(el), Math.sin(el));
 }
@@ -116,6 +144,9 @@ export class Viewer {
     this._dirty = true;
     this._raf = 0;
     this._hidden = typeof document !== 'undefined' && document.hidden;
+    this._obstacles = []; // padded canvas-local rects the callout labels must avoid
+    this._labels = []; // { obj, from, to, offset } per callout label
+    this._fade = { value: new THREE.Vector3(1, FADE_START, FADE_END) }; // x = drawing-buffer height
 
     if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
 
@@ -175,6 +206,7 @@ export class Viewer {
     key.shadow.bias = -0.0002;
     key.shadow.normalBias = 0.06; // ~1 shadow texel at the default frustum; kills acne on the body walls
     key.shadow.radius = 5;
+    key.shadow.intensity = SHADOW_INTENSITY;
     const sc = key.shadow.camera;
     sc.near = 40;
     sc.far = 400;
@@ -245,6 +277,7 @@ export class Viewer {
     if (assembly?.capBounds) this.capBounds = { ...assembly.capBounds };
 
     let count = 0;
+    let dressed = false; // has a cap or design on top of the body
     for (const part of result?.parts || []) {
       if (!part?.geometry) continue;
       const geo = displayGeometry(part.geometry); // the viewer owns (and disposes) this copy
@@ -260,6 +293,7 @@ export class Viewer {
       if (part.name === 'cap' || part.name === 'design') {
         this.capGroup.add(mesh);
         mesh.renderOrder = 1;
+        dressed = true;
       } else {
         this.bodyGroup.add(mesh);
         mat.userData.clippable = true;
@@ -268,6 +302,7 @@ export class Viewer {
       count++;
     }
     this.hasModel = count > 0;
+    this.key.shadow.intensity = dressed ? SHADOW_INTENSITY : SHADOW_INTENSITY_BARE;
 
     this._updateShadowFrustum();
     this._applyLayout();
@@ -343,6 +378,15 @@ export class Viewer {
   setCallouts(on) {
     this._calloutsOn = !!on;
     this.callouts.visible = this._calloutsOn && this.hasModel;
+    this._invalidate();
+  }
+
+  /**
+   * Page overlays the callout labels must stay clear of (export dock, warning slip, ...).
+   * @param {Array<DOMRect|{x,y,width,height}|{left,top,right,bottom}>} rects canvas-local pixels
+   */
+  setObstacles(rects) {
+    this._obstacles = (Array.isArray(rects) ? rects : []).map((r) => toEdges(r, OBSTACLE_PAD)).filter(Boolean);
     this._invalidate();
   }
 
@@ -453,7 +497,7 @@ export class Viewer {
     const geo = new THREE.ExtrudeGeometry(shape, { depth: PLATE_THICKNESS, bevelEnabled: false, curveSegments: 8 });
     geo.translate(0, 0, -PLATE_THICKNESS); // top face at z = 0
     geo.computeVertexNormals();
-    const mat = new THREE.MeshStandardMaterial({ color: PLATE_COLOR, roughness: 0.9, metalness: 0.0 });
+    const mat = this._fadeMaterial(new THREE.MeshStandardMaterial({ color: PLATE_COLOR, roughness: 0.9, metalness: 0.0 }));
     const mesh = new THREE.Mesh(geo, mat);
     mesh.name = 'build-plate';
     mesh.receiveShadow = true;
@@ -469,7 +513,7 @@ export class Viewer {
       pts.push(-inner, v, z, inner, v, z);
       pts.push(v, -inner, z, v, inner, z);
     }
-    const gridMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: GRID_OPACITY, depthWrite: false });
+    const gridMat = this._fadeMaterial(new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: GRID_OPACITY, depthWrite: false }));
     const grid = lineSegments(pts, gridMat);
     grid.renderOrder = -1;
 
@@ -481,7 +525,7 @@ export class Viewer {
       const b = edgePts[(i + 1) % edgePts.length];
       edge.push(a.x, a.y, z, b.x, b.y, z);
     }
-    const edgeMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: INSET_OPACITY, depthWrite: false });
+    const edgeMat = this._fadeMaterial(new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: INSET_OPACITY, depthWrite: false }));
     const inset = lineSegments(edge, edgeMat);
     inset.renderOrder = -1;
 
@@ -489,6 +533,23 @@ export class Viewer {
     group.name = 'grid';
     group.add(grid, inset);
     return group;
+  }
+
+  /** Screen-space fade of a plate material in the top band of the canvas (see FADE_START). */
+  _fadeMaterial(mat) {
+    const fade = this._fade;
+    mat.transparent = true;
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uPlateFade = fade;
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform vec3 uPlateFade;')
+        .replace(
+          '#include <dithering_fragment>',
+          '#include <dithering_fragment>\n\tgl_FragColor.a *= 1.0 - smoothstep(uPlateFade.y, uPlateFade.z, gl_FragCoord.y / uPlateFade.x);',
+        );
+    };
+    mat.customProgramCacheKey = () => 'ck-plate-fade';
+    return mat;
   }
 
   _makeLabel(text, axis) {
@@ -504,6 +565,7 @@ export class Viewer {
   /** Rebuild the dimension callouts from the current bounds. */
   _updateCallouts() {
     this._clearGroup(this.callouts);
+    this._labels = [];
     if (this._calloutsOn === undefined) this._calloutsOn = true;
     this.callouts.visible = this._calloutsOn && this.hasModel;
     if (!this.hasModel) return;
@@ -531,14 +593,69 @@ export class Viewer {
     this.callouts.add(lines);
 
     const width = this._makeLabel(`${b.x.toFixed(1)} mm`, 'width');
-    width.position.set(0, yLine - 1.5, z0);
     width.center.set(0.5, 0); // hang below the line
     this.callouts.add(width);
 
     const height = this._makeLabel(`${h.toFixed(1)} mm`, 'height');
-    height.position.set(xLine + 1.5, -hy, h / 2);
     height.center.set(0, 0.5); // sit to the right of the line
     this.callouts.add(height);
+
+    // Each label slides along its line (from -> to) to dodge page overlays; see _placeLabels.
+    this._labels = [
+      { obj: width, from: new THREE.Vector3(-hx, yLine, z0), to: new THREE.Vector3(hx, yLine, z0), offset: new THREE.Vector3(0, -CALLOUT_LABEL_OFFSET, 0) },
+      { obj: height, from: new THREE.Vector3(xLine, -hy, 0), to: new THREE.Vector3(xLine, -hy, h), offset: new THREE.Vector3(CALLOUT_LABEL_OFFSET, 0, 0) },
+    ];
+    for (const l of this._labels) l.obj.position.copy(l.from).lerp(l.to, 0.5).add(l.offset);
+  }
+
+  /**
+   * Slide each callout label along its dimension line to the clear slot nearest the middle:
+   * inside the canvas, off every obstacle rect and off the labels already placed. Hidden when
+   * no slot is clear. Runs after a label pass so the elements have a measurable size.
+   */
+  _placeLabels() {
+    if (!this.callouts.visible || !this._labels.length) return false;
+    const w = this.container.clientWidth || 1;
+    const h = this.container.clientHeight || 1;
+    const canvas = { left: 0, top: 0, right: w, bottom: h };
+    const taken = [...this._obstacles];
+    const p = new THREE.Vector3();
+    let changed = false;
+    for (const l of this._labels) {
+      const el = l.obj.element;
+      const lw = el.offsetWidth;
+      const lh = el.offsetHeight;
+      if (!lw || !lh) continue; // not laid out yet (display:none); the next pass will place it
+      let spot = null;
+      for (const t of LABEL_SLOTS) {
+        p.copy(l.from).lerp(l.to, t).add(l.offset);
+        const s = p.clone().project(this.camera);
+        if (s.z < -1 || s.z > 1) continue;
+        const px = ((s.x + 1) / 2) * w;
+        const py = ((1 - s.y) / 2) * h;
+        const rect = { left: px - l.obj.center.x * lw, top: py - l.obj.center.y * lh };
+        rect.right = rect.left + lw;
+        rect.bottom = rect.top + lh;
+        if (rect.left < canvas.left || rect.top < canvas.top || rect.right > canvas.right || rect.bottom > canvas.bottom) continue;
+        if (taken.some((o) => intersects(rect, o))) continue;
+        spot = p.clone();
+        taken.push(rect);
+        break;
+      }
+      const visible = spot !== null;
+      if (visible && !l.obj.position.equals(spot)) {
+        l.obj.position.copy(spot);
+        changed = true;
+      }
+      // Hide with `visibility` (not CSS2D's display:none) so a hidden label keeps its layout
+      // size and can be measured, and re-shown, on later passes.
+      const vis = visible ? '' : 'hidden';
+      if (el.style.visibility !== vis) {
+        el.style.visibility = vis;
+        changed = true;
+      }
+    }
+    return changed;
   }
 
   _resize() {
@@ -546,6 +663,7 @@ export class Viewer {
     const h = this.container.clientHeight || 1;
     this.renderer.setSize(w, h, false);
     this.labelRenderer.setSize(w, h);
+    this._fade.value.x = Math.max(1, this.renderer.getDrawingBufferSize(new THREE.Vector2()).y);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this._invalidate();
@@ -578,6 +696,7 @@ export class Viewer {
 
   _render() {
     this.renderer.render(this.scene, this.camera);
-    this.labelRenderer.render(this.scene, this.camera);
+    this.labelRenderer.render(this.scene, this.camera); // mounts the label elements so they can be measured
+    if (this._placeLabels()) this.labelRenderer.render(this.scene, this.camera);
   }
 }

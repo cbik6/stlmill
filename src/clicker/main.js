@@ -121,7 +121,31 @@ function setSlip(messages) {
   const items = (messages || []).filter(Boolean);
   slipEl.replaceChildren(...items.map((m) => Object.assign(document.createElement('li'), { textContent: m })));
   slipEl.hidden = items.length === 0;
+  syncObstacles();
 }
+
+// The viewer keeps its mm callout labels clear of whatever floats over the bench:
+// the export dock (and its warning slip while shown). Rects are canvas-local; on
+// phones the dock sits outside the bench, so nothing overlaps and the list is empty.
+const dockEl = slipEl.closest('.dock');
+function syncObstacles() {
+  if (typeof viewer.setObstacles !== 'function') return;
+  const c = benchEl.getBoundingClientRect();
+  const rects = [];
+  for (const el of [dockEl, slipEl]) {
+    if (!el || el.hidden) continue;
+    const r = el.getBoundingClientRect();
+    const left = Math.max(r.left, c.left) - c.left;
+    const top = Math.max(r.top, c.top) - c.top;
+    const right = Math.min(r.right, c.right) - c.left;
+    const bottom = Math.min(r.bottom, c.bottom) - c.top;
+    if (right > left && bottom > top) rects.push({ left, top, right, bottom });
+  }
+  viewer.setObstacles(rects);
+}
+new ResizeObserver(() => syncObstacles()).observe(benchEl);
+if (dockEl) new ResizeObserver(() => syncObstacles()).observe(dockEl);
+syncObstacles();
 
 function setSummary(result) {
   const b = result?.bounds;
