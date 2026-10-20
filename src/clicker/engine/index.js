@@ -125,8 +125,10 @@ export async function buildClicker(userParams = {}) {
   const mode = params.cap.designMode;
   const flipCap = mode !== 'raised';
   const gap = 6;
-  parts[0].print = { x: -(bounds.x / 2 + gap), y: 0, flipX: false };
-  parts[1].print = { x: capBounds.x / 2 + gap, y: 0, flipX: flipCap };
+  // assembleZ: z of the part's build-frame origin in the assembled (viewer) frame, used for the
+  // slicer's Assembly View pose. Body frame == assembled frame; cap/design frames sit at capZ.
+  parts[0].print = { x: -(bounds.x / 2 + gap), y: 0, flipX: false, assembleZ: 0 };
+  parts[1].print = { x: capBounds.x / 2 + gap, y: 0, flipX: flipCap, assembleZ: heights.capZ };
   if (design) parts[2].print = { ...parts[1].print, follow: 'cap' };
   if (!flipCap && design) {
     warnings.push('Raised designs print cap-up and need supports under the cap; use Inlay for a flat, two-colour cap.');

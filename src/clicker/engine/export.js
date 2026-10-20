@@ -129,7 +129,24 @@ export function layoutForPrint(resultOrParts) {
 
   const hasRaised = parts.some((p) => p.name === 'design' && p.print && !p.print.flipX);
   if (hasRaised) warnings.push('Raised designs print cap-up and need supports under the cap; use Inlay for a flat, two-colour cap.');
-  return { parts: out, warnings };
+  // Baked transform per part: p_print = F(p_built) + d, F = diag(1, -1, -1) when flipX else identity
+  for (const p of out) p.bake = transforms.get(p.name);
+  return { parts: out, warnings, transforms };
+}
+
+/**
+ * Assembly pose for a baked part: p_assembled = F(p_print - d) + (0, 0, assembleZ), i.e. undo the
+ * print bake (F is its own inverse) and lift the part to its assembled height in the body frame.
+ * Returned in the 3MF core `transform` layout (row-vector convention, 3x3 rotation rows then
+ * translation): "m00 m01 m02 m10 m11 m12 m20 m21 m22 tx ty tz".
+ */
+export function assembleTransform(bake, assembleZ = 0) {
+  if (!bake) return IDENTITY;
+  const s = bake.flipX ? -1 : 1;
+  const tx = -bake.dx;
+  const ty = -s * bake.dy;
+  const tz = -s * bake.dz + assembleZ;
+  return `1 0 0 0 ${s} 0 0 0 ${s} ${fmt(tx)} ${fmt(ty)} ${fmt(tz)}`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -287,8 +304,12 @@ export function buildPrusaConfig(buildObjects) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<config>\n${body}</config>\n`;
 }
 
-/** Bambu Studio / OrcaSlicer model settings: one <object> per build object with one <part> per mesh. */
-export function buildBambuModelSettings(buildObjects) {
+/**
+ * Bambu Studio / OrcaSlicer model settings: one <object> per build object with one <part> per
+ * mesh. `assembleTransforms` (Map buildObjectId -> 12-number transform) gives the Assembly View
+ * pose of each object relative to the baked print placement; defaults to identity.
+ */
+export function buildBambuModelSettings(buildObjects, assembleTransforms = new Map()) {
   const objects = buildObjects;
   const objs = objects
     .map(
@@ -321,7 +342,7 @@ export function buildBambuModelSettings(buildObjects) {
     )
     .join('');
   const assemble = objects
-    .map((o) => `    <assemble_item object_id="${o.id}" instance_id="0" transform="${IDENTITY}" offset="0 0 0"/>\n`)
+    .map((o) => `    <assemble_item object_id="${o.id}" instance_id="0" transform="${assembleTransforms.get(o.id) || IDENTITY}" offset="0 0 0"/>\n`)
     .join('');
   return (
     `<?xml version="1.0" encoding="UTF-8"?>\n<config>\n${objs}` +
@@ -367,14 +388,27 @@ const RELS =
  * Materials-extension colorgroup, plus PrusaSlicer and Bambu/Orca metadata (extruders 1/2/3).
  */
 export async function exportThreeMF(resultOrParts, { name = 'clicker' } = {}) {
+  const srcParts = Array.isArray(resultOrParts) ? resultOrParts : resultOrParts.parts;
+  const assembly = Array.isArray(resultOrParts) ? null : resultOrParts.assembly;
   const { parts } = layoutForPrint(resultOrParts);
   const { xml, objects, buildObjects } = buildThreeMFModel(parts, { name });
+  // Assembly View poses: undo the print bake and lift each object to its assembled height
+  // (body at the origin; cap composite with its bottom face at assembly.capZ, centred on the body).
+  const assembleTransforms = new Map();
+  for (const g of buildObjects) {
+    const lead = g.parts[0];
+    const laid = parts.find((p) => p.name === lead.name);
+    const src = srcParts.find((p) => p.name === lead.name);
+    let z = src && src.print && typeof src.print.assembleZ === 'number' ? src.print.assembleZ : 0;
+    if (!z && lead.name !== 'body' && assembly && typeof assembly.capZ === 'number') z = assembly.capZ;
+    assembleTransforms.set(g.id, assembleTransform(laid && laid.bake, z));
+  }
   const zip = new JSZip();
   zip.file('[Content_Types].xml', CONTENT_TYPES);
   zip.file('_rels/.rels', RELS);
   zip.file('3D/3dmodel.model', xml);
   zip.file('Metadata/Slic3r_PE_model.config', buildPrusaConfig(buildObjects));
-  zip.file('Metadata/model_settings.config', buildBambuModelSettings(buildObjects));
+  zip.file('Metadata/model_settings.config', buildBambuModelSettings(buildObjects, assembleTransforms));
   zip.file('Metadata/project_settings.config', buildBambuProjectSettings(objects));
   const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', compressionOptions: { level: 6 } });
   return new Blob([bytes], { type: THREEMF_MIME });

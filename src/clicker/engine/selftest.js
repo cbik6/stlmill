@@ -326,6 +326,49 @@ async function validate3MF(result, label) {
         check(!!obj6 && (obj6[1].match(/<part /g) || []).length === 2, 'model_settings: object 6 has exactly 2 parts');
         check((txt.match(/<model_instance>/g) || []).length === 2 && /object_id" value="6"/.test(txt), 'model_settings: plate instances for 3 and 6');
         check((txt.match(/<assemble_item /g) || []).length === 2 && /assemble_item object_id="6"/.test(txt), 'model_settings: assemble items for 3 and 6');
+      }
+      if (f.includes('model_settings')) {
+        // Assembly View poses: applying each assemble transform to the BAKED (print-layout) vertices
+        // must reproduce the viewer's assembled frame (body at origin, cap bottom face at capZ).
+        const laidParts = layoutForPrint(result).parts;
+        const applyTf = (geometry, m) => {
+          const pos = geometry.attributes.position.array;
+          const b = { minX: Infinity, minY: Infinity, minZ: Infinity, maxX: -Infinity, maxY: -Infinity, maxZ: -Infinity };
+          for (let i = 0; i < pos.length; i += 3) {
+            const x = pos[i], y = pos[i + 1], z = pos[i + 2];
+            const X = x * m[0] + y * m[3] + z * m[6] + m[9];
+            const Y = x * m[1] + y * m[4] + z * m[7] + m[10];
+            const Z = x * m[2] + y * m[5] + z * m[8] + m[11];
+            if (X < b.minX) b.minX = X; if (X > b.maxX) b.maxX = X;
+            if (Y < b.minY) b.minY = Y; if (Y > b.maxY) b.maxY = Y;
+            if (Z < b.minZ) b.minZ = Z; if (Z > b.maxZ) b.maxZ = Z;
+          }
+          return b;
+        };
+        const tfs = new Map([...txt.matchAll(/<assemble_item object_id="(\d+)" instance_id="0" transform="([^"]+)"/g)].map((m) => [m[1], m[2].split(' ').map(Number)]));
+        check(tfs.size === topLevel && [...tfs.values()].every((m) => m.length === 12 && m.every(Number.isFinite)), 'assemble: one 12-number transform per build object');
+        const near = (a, b, tol = 0.01) => Math.abs(a - b) <= tol;
+        const builtBox = (name) => result.parts.find((p) => p.name === name).geometry.boundingBox;
+        const capZ = result.assembly.capZ;
+        const expect = (name, m, dz, label) => {
+          const got = applyTf(laidParts.find((p) => p.name === name).geometry, m);
+          const ref = builtBox(name);
+          const ok = near(got.minX, ref.min.x) && near(got.maxX, ref.max.x) && near(got.minY, ref.min.y) && near(got.maxY, ref.max.y) && near(got.minZ, ref.min.z + dz) && near(got.maxZ, ref.max.z + dz);
+          check(ok, `assemble: ${label} reproduces the viewer frame (z ${got.minZ.toFixed(3)}..${got.maxZ.toFixed(3)}, expected ${(ref.min.z + dz).toFixed(3)}..${(ref.max.z + dz).toFixed(3)})`);
+          return got;
+        };
+        const bodyBox = expect('body', tfs.get('3'), 0, 'body');
+        check(near(bodyBox.minZ, 0) && near((bodyBox.minX + bodyBox.maxX) / 2, 0, 0.05) && near((bodyBox.minY + bodyBox.maxY) / 2, 0, 0.05), 'assemble: body at origin, floor on z = 0');
+        const capId = hasDesign ? '6' : '4';
+        const capBox = expect('cap', tfs.get(capId), capZ, 'cap');
+        check(near(capBox.maxZ, capZ + DEFAULT_PARAMS.cap.thickness) && near(capBox.minZ, capZ - DEFAULT_PARAMS.switch.stemHeight), 'assemble: cap bottom face at capZ, top at capZ + thickness');
+        check(near((capBox.minX + capBox.maxX) / 2, 0, 0.05) && near((capBox.minY + capBox.maxY) / 2, 0, 0.05), 'assemble: cap centred over the body');
+        if (hasDesign) {
+          const dBox = expect('design', tfs.get('6'), capZ, 'design (same transform as the cap)');
+          const depth = result.assembly.engraveDepth || DEFAULT_PARAMS.cap.designHeight;
+          if (result.parts[1].print.flipX) check(near(dBox.minZ, capZ + DEFAULT_PARAMS.cap.thickness - depth) && near(dBox.maxZ, capZ + DEFAULT_PARAMS.cap.thickness), 'assemble: inlay filler at capZ + thickness - depth .. capZ + thickness');
+        }
+        console.log(`  assemble: ${[...tfs].map(([id, m]) => `${id} -> [${m.join(' ')}]`).join('  ')}`);
       } else {
         const obj6 = txt.match(/<object id="6" instances_count="1">([\s\S]*?)<\/object>/);
         const vols = obj6 ? [...obj6[1].matchAll(/<volume firstid="(\d+)" lastid="(\d+)">[\s\S]*?key="name" value="(\w+)"[\s\S]*?key="extruder" value="(\d)"/g)].map((m) => m.slice(1)) : [];

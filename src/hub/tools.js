@@ -34,6 +34,13 @@ export const ICONS = {
       '<path d="M7 14l3-4 2.5 3 2-2 2.5 3"/>' +
       '<path d="M9 21h6"/>'
   ),
+  // Character cap: a rounded character head on a stem
+  character: svg(
+    '<path d="M5 13a7 7 0 0 1 14 0v3a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-3z"/>' +
+      '<circle cx="9.5" cy="12" r="1" fill="currentColor" stroke="none"/>' +
+      '<circle cx="14.5" cy="12" r="1" fill="currentColor" stroke="none"/>' +
+      '<path d="M10 21h4M12 18v3"/>'
+  ),
   // QR keychain: a tag with a few QR modules
   qr: svg(
     '<path d="M3 8.5V4a1 1 0 0 1 1-1h4.5l12 12-5.5 5.5L3 8.5z"/>' +
@@ -54,6 +61,17 @@ export const TOOLS = [
     color: 'orange',
     action: 'Open the mill',
     icon: ICONS.clicker,
+  },
+  {
+    id: 'character-cap',
+    name: 'Character Cap',
+    sub: 'A pumpkin, ghost or your own sculpt, made into a cap that presses onto a switch.',
+    tagline: 'Character cap — a sculpted character turned into an MX-switch cap with a two-colour face',
+    href: './character-cap/',
+    status: 'soon',
+    color: 'orange',
+    action: 'Open the mill',
+    icon: ICONS.character,
   },
   {
     id: 'lithophane',
