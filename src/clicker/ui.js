@@ -126,8 +126,7 @@ export function createReadout({ intDigits = 2, decimals = 0, signed = false, uni
           }, delay),
         );
       } else {
-        tile.textContent = c;
-        tick(tile);
+        tile.textContent = c; // ordinary changes swap in place: only the cascade moves
       }
     });
   }
@@ -547,17 +546,22 @@ function buildGroups(container) {
 
     const card = h('div', { class: 'swatch swatch-white' }, h('span', { class: 'hole', 'aria-hidden': 'true' }), h('h3', {}, head), body);
     const el = h('section', { class: 'hanger group', dataset: { group: def.id } }, h('span', { class: 'peg', 'aria-hidden': 'true' }), card);
-    head.addEventListener('click', () => open(def.id, head.getAttribute('aria-expanded') === 'true'));
+    head.addEventListener('click', () => open(def.id, head.getAttribute('aria-expanded') === 'true', { reveal: true }));
     groups.push({ id: def.id, el, head, body });
     container.append(el);
   });
 
-  function open(id, collapse = false) {
+  function open(id, collapse = false, { reveal = false } = {}) {
     groups.forEach((g) => {
       const on = g.id === id && !collapse;
       g.el.classList.toggle('is-open', on);
       g.head.setAttribute('aria-expanded', on ? 'true' : 'false');
       g.body.hidden = !on;
+      // Under the sticky bench on a phone the opened card must not unfold out of sight;
+      // scroll-margin-top (clicker.css) keeps the header clear of the bench.
+      if (on && reveal && typeof matchMedia === 'function' && matchMedia('(max-width: 899px)').matches) {
+        g.head.scrollIntoView({ block: 'start', behavior: 'auto' });
+      }
     });
     try {
       localStorage.setItem(STORAGE_KEY, collapse ? '' : id);

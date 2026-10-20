@@ -69,9 +69,8 @@
                 aria-describedby="ck-text-hint"
               />
               <div class="head-row">
-                <div>
-                  <label class="ctl-label" for="ck-font">Typeface</label>
-                  <select id="ck-font">
+                <label class="visually-hidden" for="ck-font">Typeface</label>
+                <select id="ck-font">
                     <option value="Barlow Semi Condensed" style="font-family: 'Barlow Semi Condensed'">Barlow Semi Condensed</option>
                     <option value="Arial" style="font-family: Arial">Arial</option>
                     <option value="Impact" style="font-family: Impact">Impact</option>
@@ -79,15 +78,14 @@
                     <option value="Verdana" style="font-family: Verdana">Verdana</option>
                     <option value="Courier New" style="font-family: 'Courier New'">Courier New</option>
                     <option value="Trebuchet MS" style="font-family: 'Trebuchet MS'">Trebuchet MS</option>
-                  </select>
-                </div>
+                </select>
                 <label class="toggle" for="ck-bold">
                   <input type="checkbox" id="ck-bold" />
                   <span class="toggle-track" aria-hidden="true"></span>
                   Bold
                 </label>
               </div>
-              <span class="hint" id="ck-text-hint">Up to 20 characters. Short, heavy letters print best.</span>
+              <span class="visually-hidden" id="ck-text-hint">Up to 20 characters. Short, heavy letters print best.</span>
             </div>
 
             <!-- SVG -->
@@ -175,10 +173,12 @@
             <label class="seg-item"><input type="radio" name="view-mode" value="exploded" /><span>Exploded</span></label>
           </fieldset>
           <span class="tool-sep" aria-hidden="true"></span>
-          <button type="button" class="tool-btn" id="ck-tool-switch" aria-pressed="false" title="Ghost in a reference MX switch (not exported)">Show switch</button>
-          <button type="button" class="tool-btn" id="ck-tool-cut" aria-pressed="false" title="Slice the body down the middle to see inside">Cut open</button>
-          <button type="button" class="tool-btn" id="ck-tool-grid" aria-pressed="true" title="10 mm grid on the plate">Grid</button>
-          <button type="button" class="tool-btn" id="ck-tool-callouts" aria-pressed="true" title="Width and height in mm">Callouts</button>
+          <div class="tool-set">
+            <button type="button" class="tool-btn" id="ck-tool-switch" aria-pressed="false" title="Ghost in a reference MX switch (not exported)">Show switch</button>
+            <button type="button" class="tool-btn" id="ck-tool-cut" aria-pressed="false" title="Slice the body down the middle to see inside">Cut open</button>
+            <button type="button" class="tool-btn" id="ck-tool-grid" aria-pressed="true" title="10 mm grid on the plate">Grid</button>
+            <button type="button" class="tool-btn" id="ck-tool-callouts" aria-pressed="true" title="Width and height in mm">Callouts</button>
+          </div>
         </div>
 
         <div class="bench-busy" id="ck-busy" role="status" aria-live="polite" hidden>
@@ -188,15 +188,16 @@
         <div class="dock" role="group" aria-label="Export">
           <ul class="dock-slip" id="ck-slip" role="status" aria-live="polite" hidden></ul>
           <p class="dock-summary" id="ck-summary"><strong>— × — × — mm</strong>Building the first clicker…</p>
-          <div class="dock-actions">
-            <button type="button" class="tab" id="ck-download-3mf">
-              Download 3MF
-              <svg class="tab-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M4 12h16M13 5l7 7-7 7" />
-              </svg>
-            </button>
+          <div class="dock-foot">
             <button type="button" class="dock-quiet" id="ck-download-stl">STL as a zip</button>
           </div>
+          <!-- The card's own black tab, hung from the dock's lower edge -->
+          <button type="button" class="tab" id="ck-download-3mf">
+            Download 3MF
+            <svg class="tab-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 12h16M13 5l7 7-7 7" />
+            </svg>
+          </button>
           <div class="dock-icons">
             <button type="button" class="dock-icon" id="ck-save" aria-label="Save project file" title="Save project (JSON)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

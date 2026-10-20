@@ -14,7 +14,7 @@ export const PROJECT_VERSION = 1;
 
 export const DEFAULT_SOURCE = {
   kind: 'text', // 'text' | 'svg' | 'image' | 'sample'
-  text: { text: 'STL', fontFamily: 'Arial', bold: true },
+  text: { text: 'STL', fontFamily: 'Barlow Semi Condensed', bold: true },
   svg: { svgText: '', fileName: '' },
   image: { dataUrl: null, fileName: '', threshold: 128, invert: false, removeBackground: true, smoothing: 1 },
   sample: { id: 'heart' },
