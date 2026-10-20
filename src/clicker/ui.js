@@ -172,13 +172,17 @@ export const GROUPS = [
   {
     id: 'fit',
     title: 'Switch & fit',
-    status: (s) => `MX · ${s.params.switch.cutout.toFixed(1)} / ${s.params.switch.pocket.toFixed(1)}`,
+    status: (s) => `MX · ${s.params.switch.cutout.toFixed(1)} / ${s.params.switch.cavity.toFixed(1)}`,
     controls: [
-      { type: 'range', path: 'body.height', label: 'Body height', unit: 'mm', min: 12, max: 22, step: 0.5 },
-      { type: 'range', path: 'body.rimHeight', label: 'Rim height', unit: 'mm', min: 4, max: 9, step: 0.1 },
+      { type: 'range', path: 'body.height', label: 'Body height', unit: 'mm', min: 14, max: 30, step: 0.5 },
+      { type: 'range', path: 'body.rimHeight', label: 'Rim height', unit: 'mm', min: 0, max: 12, step: 0.1 },
       { type: 'range', path: 'body.wall', label: 'Wall', unit: 'mm', min: 1.6, max: 4, step: 0.1 },
-      { type: 'range', path: 'switch.cutout', label: 'Cutout', unit: 'mm', min: 13.6, max: 14.4, step: 0.1 },
-      { type: 'range', path: 'switch.pocket', label: 'Pocket', unit: 'mm', min: 15.2, max: 16.2, step: 0.1 },
+      // The switch drops in from the top: it clips into the plate cutout, its flange rests on
+      // the plate, and the lower housing + pins sit in a closed cavity beneath. The floor stays solid.
+      { type: 'range', path: 'switch.cutout', label: 'Plate cutout', unit: 'mm', min: 13.8, max: 14.4, step: 0.1 },
+      { type: 'range', path: 'switch.cavity', label: 'Cavity width', unit: 'mm', min: 14, max: 15.6, step: 0.1 },
+      { type: 'range', path: 'switch.cavityDepth', label: 'Cavity depth', unit: 'mm', min: 5.5, max: 12, step: 0.1 },
+      { type: 'range', path: 'switch.pocket', label: 'Flange width', unit: 'mm', min: 15, max: 17, step: 0.1 },
       { type: 'range', path: 'switch.plateThickness', label: 'Plate', unit: 'mm', min: 1.2, max: 2, step: 0.1 },
       { type: 'range', path: 'fit.switchTolerance', label: 'Switch tolerance', unit: 'mm', min: 0, max: 0.4, step: 0.05 },
       { type: 'range', path: 'fit.clearance', label: 'Cap clearance', unit: 'mm', min: 0.1, max: 0.6, step: 0.05 },

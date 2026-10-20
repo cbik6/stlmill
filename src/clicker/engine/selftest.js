@@ -97,6 +97,31 @@ function openEdgeCount(geometry) {
   return open;
 }
 
+/**
+ * Vertical ray-cast from below at (x, y): returns the lowest z of any triangle hit, or null.
+ * Used to prove the body has a closed floor under the switch.
+ */
+function hitFromBelow(geometry, x, y) {
+  const pos = geometry.attributes.position.array;
+  const index = geometry.index ? geometry.index.array : null;
+  const n = index ? index.length : pos.length / 3;
+  let best = null;
+  for (let i = 0; i + 2 < n; i += 3) {
+    const a = (index ? index[i] : i) * 3, b = (index ? index[i + 1] : i + 1) * 3, c = (index ? index[i + 2] : i + 2) * 3;
+    const ax = pos[a] - x, ay = pos[a + 1] - y;
+    const bx = pos[b] - x, by = pos[b + 1] - y;
+    const cx = pos[c] - x, cy = pos[c + 1] - y;
+    const d1 = ax * by - ay * bx, d2 = bx * cy - by * cx, d3 = cx * ay - cy * ax;
+    const neg = d1 < 0 || d2 < 0 || d3 < 0, posi = d1 > 0 || d2 > 0 || d3 > 0;
+    if (neg && posi) continue; // outside in XY
+    const area = d1 + d2 + d3;
+    if (Math.abs(area) < 1e-12) continue;
+    const z = (pos[a + 2] * d2 + pos[b + 2] * d3 + pos[c + 2] * d1) / area;
+    if (best === null || z < best) best = z;
+  }
+  return best;
+}
+
 function report(label, result) {
   console.log(`\n== ${label}`);
   for (const p of result.parts) {
@@ -169,6 +194,38 @@ check(base.parts[1].geometry.boundingBox.min.z < -3.5, 'cap stem hangs below z=0
 check(Math.abs(base.parts[1].geometry.boundingBox.max.z - 3) < 1e-6, 'cap top at z=thickness');
 check(base.parts[2].geometry.boundingBox.min.z >= 3 - 1e-6, 'design sits on cap top');
 check(base.warnings.length === 0, 'no warnings with defaults');
+// closed floor: a ray from below at the centre (and around the cavity footprint) must hit z = 0
+const bodyG = base.parts[0].geometry;
+check(Math.abs(bodyG.boundingBox.min.z) < 1e-6, 'body rests on z = 0');
+for (const [x, y] of [[0, 0], [3, 3], [-6, 2], [5, -6], [-7, -7]]) {
+  const z = hitFromBelow(bodyG, x, y);
+  check(z !== null && Math.abs(z) < 1e-6, `floor is closed at (${x}, ${y}) (lowest hit z = ${z})`);
+}
+const asm = base.assembly;
+check(Math.abs(asm.floorThickness - 1.5) < 1e-6, `floor thickness 1.5 (got ${asm.floorThickness})`);
+check(Math.abs(asm.cavityDepth - 8.5) < 1e-6, 'cavity depth 8.5');
+check(Math.abs(asm.plateTopZ - (DEFAULT_PARAMS.body.height - DEFAULT_PARAMS.body.rimHeight)) < 1e-6, 'plate top z');
+check(Math.abs(asm.capZ - (asm.plateTopZ + 6.6)) < 1e-6, 'capZ = plateTopZ + 6.6');
+check(Math.abs(asm.capZ - (DEFAULT_PARAMS.body.height - 0.4)) < 1e-6, 'cap underside seats 0.4 mm below the rim');
+// cavity present: the lowest hit just inside the cavity wall, looking up from inside, is the cavity ceiling
+{
+  const half = (DEFAULT_PARAMS.switch.cavity + 2 * DEFAULT_PARAMS.fit.switchTolerance) / 2;
+  const hasCavityWall = (() => {
+    const pos = bodyG.attributes.position.array;
+    for (let i = 0; i < pos.length; i += 3) {
+      if (Math.abs(Math.abs(pos[i]) - half) < 1e-3 && Math.abs(pos[i + 2] - asm.cavityBottomZ) < 1e-3) return true;
+    }
+    return false;
+  })();
+  check(hasCavityWall, `cavity wall vertices at x = +-${half} on the cavity floor (z = ${asm.cavityBottomZ})`);
+  // plate cutout is the nominal 14.0 (no tolerance)
+  const pos = bodyG.attributes.position.array;
+  let cutoutHit = false;
+  for (let i = 0; i < pos.length; i += 3) {
+    if (Math.abs(Math.abs(pos[i]) - 7.0) < 1e-3 && Math.abs(pos[i + 2] - asm.plateTopZ) < 1e-3) cutoutHit = true;
+  }
+  check(cutoutHit, 'plate cutout edges at x = +-7.0 on the plate top');
+}
 await validate3MF(base, 'selftest');
 
 // 2. traced (raster pipeline) design, engraved, keychain
@@ -198,10 +255,22 @@ check(plain.parts.length === 2, 'no design -> body + cap');
 // 5. too-short body -> warning, and reference switch
 const short = report('short body', await buildClicker({ design: { spec }, body: { height: 6, rimHeight: 2 } }));
 check(short.warnings.some((w) => /too short/.test(w)), 'short body warning');
+check(short.assembly.floorThickness >= 1.5 - 1e-6, 'short body keeps a 1.5 mm floor');
+check(hitFromBelow(short.parts[0].geometry, 0, 0) !== null, 'short body floor is closed');
+
+// shallow cavity requested -> warning, floor intact
+const shallow = report('shallow cavity', await buildClicker({ design: { spec }, switch: { cavityDepth: 4 } }));
+check(shallow.warnings.some((w) => /cavity is only/.test(w)), 'shallow cavity warning');
+check(Math.abs(shallow.assembly.floorThickness - (DEFAULT_PARAMS.body.height - 7 - 1.5 - 4)) < 1e-6, 'shallow cavity leaves a thicker floor');
+
 const sw = buildReferenceSwitch();
 sw.computeBoundingBox();
+const plateTop = DEFAULT_PARAMS.body.height - DEFAULT_PARAMS.body.rimHeight;
 console.log('\nreference switch tris', sw.index ? sw.index.count / 3 : sw.attributes.position.count / 3, 'z', sw.boundingBox.min.z.toFixed(2), '..', sw.boundingBox.max.z.toFixed(2));
-check(Math.abs(sw.boundingBox.max.z - (DEFAULT_PARAMS.body.height - DEFAULT_PARAMS.body.rimHeight + 6.6 + DEFAULT_PARAMS.switch.stemHeight)) < 1e-3, 'switch stem top z');
+check(Math.abs(sw.boundingBox.max.z - (plateTop + 6.6 + DEFAULT_PARAMS.switch.stemHeight)) < 1e-3, 'switch stem top z = plateTop + 6.6 + stemHeight');
+check(Math.abs(sw.boundingBox.min.z - (plateTop - 1.5 - 5.0 - 3.3)) < 1e-3, 'switch pins bottom z = plateBottom - 8.3');
+check(sw.boundingBox.min.z > base.assembly.cavityBottomZ - 1e-6, 'switch pins stay above the cavity floor');
+check(Math.abs(sw.boundingBox.max.x - 7.8) < 1e-3, 'switch flange is 15.6 wide');
 
 console.log(`\n${failures === 0 ? 'SELFTEST PASSED' : `SELFTEST FAILED (${failures})`} in ${Date.now() - t0} ms`);
 process.exit(failures === 0 ? 0 : 1);

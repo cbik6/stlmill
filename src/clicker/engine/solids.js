@@ -297,7 +297,8 @@ export function buildReferenceSwitchGeometry(params) {
   const housingBottom = plateBottom - MX.LOWER_HOUSING_DEPTH;
   parts.push(box(MX.LOWER_HOUSING, MX.LOWER_HOUSING, housingBottom, plateTop + 0.01));
   for (const [px, py] of MX.PINS) {
-    const pin = new THREE.CylinderGeometry(MX.PIN_DIAMETER / 2, MX.PIN_DIAMETER / 2, MX.PIN_LENGTH, 12, 1);
+    // pin bottom exactly at housingBottom - PIN_LENGTH; the extra 0.01 overlaps into the housing
+    const pin = new THREE.CylinderGeometry(MX.PIN_DIAMETER / 2, MX.PIN_DIAMETER / 2, MX.PIN_LENGTH + 0.01, 12, 1);
     pin.rotateX(Math.PI / 2);
     pin.translate(px, py, housingBottom - MX.PIN_LENGTH / 2 + 0.005);
     parts.push(pin);

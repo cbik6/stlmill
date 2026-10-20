@@ -9,8 +9,9 @@
 //   recess = cap (+) clearance
 //   body   = cap (+) wall + clearance
 //   The cap is additionally OR-ed with a minimum rounded-square envelope of side
-//   pocket + 2*switchTolerance so the body always encloses the switch pocket and the
-//   recess always clears the 14 mm upper housing, even for very narrow designs.
+//   switch.pocket (the 15.6 mm MX flange) + 2*switchTolerance so the recess (cap + clearance)
+//   always clears the flange and upper housing, and the body always encloses the cavity
+//   below the plate, even for very narrow designs.
 //   Longest side of the body == base.size when fill == 100 (design long side is then
 //   size - 2*(margin + wall + clearance)). fill < 100 shrinks design and body together.
 //
