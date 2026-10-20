@@ -199,7 +199,15 @@ export function chaikinClosed(loop, cornerAngleDeg = 50) {
  * leave T-junctions against the side walls, so the loops must not contain any.
  */
 export function removeCollinear(loop, areaEps = 1e-6, distEps = 1e-6) {
-  let pts = Array.from(loop);
+  // consecutive duplicates first (a duplicate makes a zero-area triple at its neighbour,
+  // which would otherwise delete a real corner)
+  let pts = [];
+  for (let i = 0; i < loop.length; i += 2) {
+    const n = pts.length;
+    if (n >= 2 && Math.abs(pts[n - 2] - loop[i]) <= distEps && Math.abs(pts[n - 1] - loop[i + 1]) <= distEps) continue;
+    pts.push(loop[i], loop[i + 1]);
+  }
+  while (pts.length >= 4 && Math.abs(pts[0] - pts[pts.length - 2]) <= distEps && Math.abs(pts[1] - pts[pts.length - 1]) <= distEps) pts.length -= 2;
   let changed = true;
   while (changed && pts.length >= 8) {
     changed = false;

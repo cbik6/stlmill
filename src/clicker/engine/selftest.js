@@ -39,9 +39,24 @@ const origWarn = console.warn;
 console.warn = (...a) => { if (!/createShapes\(\) is deprecated|maxLeafSize/.test(String(a[0]))) origWarn(...a); };
 
 const {
-  DEFAULT_PARAMS, buildClicker, buildReferenceSwitch, exportThreeMF, exportStlZip,
+  DEFAULT_PARAMS, buildClicker, buildReferenceSwitch, exportThreeMF, exportStlZip, layoutForPrint,
   makeDesignFromShapes, makeDesignFromSvg, traceBitmap, mergeParams,
 } = await import('./index.js');
+
+/** Signed volume of a closed mesh (divergence theorem). */
+function meshVolume(geometry) {
+  const pos = geometry.attributes.position.array;
+  const index = geometry.index ? geometry.index.array : null;
+  const n = index ? index.length : pos.length / 3;
+  let v = 0;
+  for (let i = 0; i + 2 < n; i += 3) {
+    const a = (index ? index[i] : i) * 3, b = (index ? index[i + 1] : i + 1) * 3, c = (index ? index[i + 2] : i + 2) * 3;
+    v += pos[a] * (pos[b + 1] * pos[c + 2] - pos[b + 2] * pos[c + 1])
+       - pos[a + 1] * (pos[b] * pos[c + 2] - pos[b + 2] * pos[c])
+       + pos[a + 2] * (pos[b] * pos[c + 1] - pos[b + 1] * pos[c]);
+  }
+  return v / 6;
+}
 const { rasterizeShapes, rasterizePolygonsEvenOdd } = await import('./raster.js');
 const { computeLayout } = await import('./outline.js');
 
@@ -254,7 +269,7 @@ async function validate3MF(result, label) {
   const names = Object.keys(zip.files);
   for (const req of ['[Content_Types].xml', '_rels/.rels', '3D/3dmodel.model']) check(names.includes(req), `3MF contains ${req}`);
   const xml = await zip.file('3D/3dmodel.model').async('string');
-  const objects = [...xml.matchAll(/<object id="(\d+)" name="([^"]+)"[^>]*pid="1" pindex="(\d+)">([\s\S]*?)<\/object>/g)];
+  const objects = [...xml.matchAll(/<object id="(\d+)" name="([^"]+)"[^>]*pid="2" pindex="(\d+)">([\s\S]*?)<\/object>/g)];
   check(objects.length === result.parts.length, `3MF has ${result.parts.length} objects (got ${objects.length})`);
   for (const m of objects) {
     const triCount = (m[4].match(/<triangle /g) || []).length;
@@ -265,17 +280,75 @@ async function validate3MF(result, label) {
     console.log(`  3MF object ${m[2]}: ${vertCount} vertices, ${triCount} triangles`);
   }
   check((xml.match(/<base /g) || []).length === result.parts.length, '3MF basematerials count');
+  check((xml.match(/<m:color /g) || []).length === result.parts.length, '3MF colorgroup colours');
+  check(/xmlns:m="http:\/\/schemas\.microsoft\.com\/3dmanufacturing\/material\/2015\/02"/.test(xml), '3MF declares the materials extension');
+  check(/<m:colorgroup id="2">/.test(xml), '3MF colorgroup id 2');
+  check(objects.every((m) => /pid="2"/.test(m[0])), '3MF objects use the colorgroup (pid=2)');
   check(/<metadata name="Title">/.test(xml), '3MF has Title metadata');
-  check((xml.match(/<item objectid=/g) || []).length === result.parts.length, '3MF build items');
+  const items = [...xml.matchAll(/<item objectid="\d+" transform="([^"]+)"/g)];
+  check(items.length === result.parts.length, '3MF build items');
+  check(items.every((m) => m[1] === '1 0 0 0 1 0 0 0 1 0 0 0'), '3MF item transforms are identity (layout baked into vertices)');
+  // XML well-formedness of the model + slicer metadata
+  const parseXml = (text) => {
+    let bad = false;
+    const doc = new XmlDomParser({ onError: () => { bad = true; } }).parseFromString(text, 'text/xml');
+    return bad ? null : doc;
+  };
+  check(parseXml(xml) !== null, '3dmodel.model parses as XML');
+  for (const f of ['Metadata/Slic3r_PE_model.config', 'Metadata/model_settings.config']) {
+    check(names.includes(f), `3MF contains ${f}`);
+    const txt = names.includes(f) ? await zip.file(f).async('string') : '';
+    const doc = parseXml(txt);
+    check(doc !== null && doc.documentElement && doc.documentElement.nodeName === 'config', `${f} parses as XML <config>`);
+    const objCount = (txt.match(/<object id=/g) || []).length;
+    check(objCount === result.parts.length, `${f} has one <object> per part`);
+    for (const [part, ext] of [['body', 1], ['cap', 2], ['design', 3]]) {
+      if (!result.parts.some((p) => p.name === part)) continue;
+      check(new RegExp(`value="${part}"[\\s\\S]{0,120}key="extruder" value="${ext}"`).test(txt), `${f}: ${part} -> extruder ${ext}`);
+    }
+  }
+  check(names.includes('Metadata/project_settings.config'), '3MF contains Metadata/project_settings.config');
+  if (names.includes('Metadata/project_settings.config')) {
+    const ps = JSON.parse(await zip.file('Metadata/project_settings.config').async('string'));
+    check(Array.isArray(ps.filament_colour) && ps.filament_colour.length === result.parts.length, 'project_settings filament_colour per extruder');
+    check(ps.filament_colour[0] === '#2B2B2B' && ps.filament_colour[1] === '#F5F5F5', 'filament colours body/cap');
+    console.log(`  project_settings: ${JSON.stringify(ps.filament_colour)}`);
+  }
+  const ct = await zip.file('[Content_Types].xml').async('string');
+  check(/Slic3r_PE_model\.config/.test(ct) && /model_settings\.config/.test(ct) && /project_settings\.config/.test(ct), 'Content types register the Metadata parts');
   console.log(`  3MF size ${blob.size} bytes`);
-  const stl = await exportStlZip(result.parts, { name: label });
+
+  // print layout: each part rests on z = 0, body / cap do not overlap in XY, design follows the cap
+  const laid = layoutForPrint(result).parts;
+  const bb = (p) => p.geometry.boundingBox;
+  const body = laid.find((p) => p.name === 'body'), cap = laid.find((p) => p.name === 'cap'), des = laid.find((p) => p.name === 'design');
+  check(bb(body).min.z === 0, `layout: body min z == 0 (got ${bb(body).min.z})`);
+  check(bb(cap).min.z === 0, `layout: cap min z == 0 (got ${bb(cap).min.z})`);
+  const flipped = result.parts[1].print.flipX;
+  if (des) {
+    if (flipped) check(bb(des).min.z === 0, `layout: inlay filler min z == 0 (got ${bb(des).min.z})`);
+    else check(Math.abs(bb(des).min.z - (bb(cap).max.z)) < 1e-6, 'layout: raised relief sits on the cap top');
+    check(Math.abs((bb(des).min.x + bb(des).max.x) / 2 - (bb(cap).min.x + bb(cap).max.x) / 2) < 0.5, 'layout: design registered with the cap in X');
+  }
+  const noOverlap = bb(body).max.x < bb(cap).min.x || bb(cap).max.x < bb(body).min.x || bb(body).max.y < bb(cap).min.y || bb(cap).max.y < bb(body).min.y;
+  check(noOverlap, 'layout: body and cap do not overlap in XY');
+  check(bb(body).max.x < 0 && bb(cap).min.x > 0, 'layout: body left of origin, cap right of origin');
+  if (flipped) check(Math.abs(bb(cap).max.z - (DEFAULT_PARAMS.cap.thickness + DEFAULT_PARAMS.switch.stemHeight)) < 1e-6, 'layout: flipped cap has the stem up');
+  for (const p of laid) check(openEdgeCount(p.geometry) === 0, `layout: ${p.name} still watertight`);
+  console.log(`  layout: body x[${bb(body).min.x.toFixed(1)}, ${bb(body).max.x.toFixed(1)}]  cap x[${bb(cap).min.x.toFixed(1)}, ${bb(cap).max.x.toFixed(1)}] z[0, ${bb(cap).max.z.toFixed(2)}]${des ? `  design z[${bb(des).min.z.toFixed(2)}, ${bb(des).max.z.toFixed(2)}]` : ''}`);
+
+  const stl = await exportStlZip(result, { name: label });
   const z2 = await JSZip.loadAsync(await stl.arrayBuffer());
   const stlNames = Object.keys(z2.files);
   check(stlNames.length === result.parts.length, 'STL zip has one file per part');
+  check(stlNames.includes('clicker-body.stl') && stlNames.includes('clicker-cap.stl'), 'STL file names clicker-<part>.stl');
   for (const n of stlNames) {
     const buf = await z2.file(n).async('arraybuffer');
     const count = new DataView(buf).getUint32(80, true);
     check(buf.byteLength === 84 + count * 50, `STL ${n} size matches header (${count} tris)`);
+    let minZ = Infinity;
+    for (let i = 0; i < count; i++) for (let k = 0; k < 3; k++) minZ = Math.min(minZ, new DataView(buf).getFloat32(84 + i * 50 + 12 + k * 12 + 8, true));
+    if (!/design/.test(n) || flipped) check(minZ === 0, `STL ${n} rests on z = 0 (min z ${minZ})`);
   }
 }
 
@@ -283,15 +356,32 @@ async function validate3MF(result, label) {
 const t0 = Date.now();
 const spec = syntheticDesign();
 
-// 1. defaults + synthetic design, raised
-const base = report('outline / raised (synthetic, defaults)', await buildClicker({ design: { spec } }));
+// 1. defaults (inlay) + synthetic design
+check(DEFAULT_PARAMS.cap.designMode === 'inlay', 'default designMode is inlay');
+const base = report('outline / inlay (synthetic, defaults)', await buildClicker({ design: { spec } }));
 check(base.parts.map((p) => p.name).join(',') === 'body,cap,design', 'parts are body,cap,design');
 check(Math.abs(base.bounds.x - 35) < 0.3, `body long side ~35 mm (got ${base.bounds.x.toFixed(2)})`);
 check(Math.abs(base.bounds.z - DEFAULT_PARAMS.body.height) < 1e-6, 'body height');
 check(base.parts[1].geometry.boundingBox.min.z < -3.5, 'cap stem hangs below z=0');
 check(Math.abs(base.parts[1].geometry.boundingBox.max.z - 3) < 1e-6, 'cap top at z=thickness');
-check(base.parts[2].geometry.boundingBox.min.z >= 3 - 1e-6, 'design sits on cap top');
+check(Math.abs(base.parts[2].geometry.boundingBox.min.z - 2) < 1e-6 && Math.abs(base.parts[2].geometry.boundingBox.max.z - 3) < 1e-6, 'inlay filler spans thickness-designHeight .. thickness');
+check(base.assembly.engraveDepth === 1, 'inlay pocket depth = designHeight');
 check(base.warnings.length === 0, 'no warnings with defaults');
+check(base.parts[1].print && base.parts[1].print.flipX === true, 'inlay cap prints flipped');
+// raised: relief on top, supports warning
+const raised = report('outline / raised (synthetic)', await buildClicker({ design: { spec }, cap: { designMode: 'raised' } }));
+check(raised.parts[2].geometry.boundingBox.min.z >= 3 - 1e-6, 'raised design sits on cap top');
+check(raised.warnings.some((w) => /need supports/.test(w)), 'raised build warns about supports');
+check(raised.parts[1].print.flipX === false, 'raised cap prints cap-up');
+// inlay pocket volume == filler volume (within 1%)
+{
+  const vRaisedCap = meshVolume(raised.parts[1].geometry);
+  const vInlayCap = meshVolume(base.parts[1].geometry);
+  const vFiller = meshVolume(base.parts[2].geometry);
+  const pocket = vRaisedCap - vInlayCap;
+  check(Math.abs(pocket - vFiller) <= 0.01 * vFiller, `inlay pocket volume ${pocket.toFixed(3)} == filler ${vFiller.toFixed(3)} mm^3 (1%)`);
+  console.log(`  volumes: cap plain ${vRaisedCap.toFixed(2)}, cap pocketed ${vInlayCap.toFixed(2)}, pocket ${pocket.toFixed(2)}, filler ${vFiller.toFixed(2)} mm^3`);
+}
 const asm = base.assembly;
 check(Math.abs(asm.floorThickness - 1.5) < 1e-6, `floor thickness 1.5 (got ${asm.floorThickness})`);
 check(Math.abs(asm.cavityDepth - 8.5) < 1e-6, 'cavity depth 8.5');

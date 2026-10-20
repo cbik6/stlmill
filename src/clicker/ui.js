@@ -192,6 +192,9 @@ export const GROUPS = [
         path: 'cap.designMode',
         label: 'Design',
         options: [
+          // Inlay: the design is pocketed into the cap top and filled flush with the
+          // second colour, so the cap prints face-down with no supports.
+          ['inlay', 'Inlay'],
           ['raised', 'Raised'],
           ['engraved', 'Engraved'],
         ],

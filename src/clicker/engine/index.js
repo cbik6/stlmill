@@ -11,7 +11,11 @@
 //            The switch drops in from the top: flange on the plate, lower housing in a closed cavity below.
 //   cap    : bottom face z = 0, top face z = cap.thickness, stem socket down to -stemHeight.
 //            The UI should place it at z = assembly.capZ (seated on the switch) in the body frame.
-//   design : only for cap.designMode === 'raised'; same frame as the cap (z = thickness .. thickness+designHeight).
+//   design : 'raised'  -> relief standing on the cap top (z = thickness .. thickness+designHeight)
+//            'inlay'   -> filler exactly filling a pocket in the cap top (z = thickness-designHeight .. thickness)
+//            'engraved'-> no design part (pocket only). Same frame as the cap in both cases.
+//   Each part also carries `print = { x, y, flipX }`: the plate placement used by the exporters
+//   (layoutForPrint). The viewer ignores it and keeps using assembly.capZ.
 // bounds   = { x, y, z } mm extents of the body part.
 // assembly = { plateTopZ, plateBottomZ, cavityBottomZ, floorThickness, cavityDepth, pocketHeight (= cavityDepth,
 //              kept for older consumers), capZ, bodyHeight, engraveDepth, capBounds: {x,y,z}, triangles }
@@ -22,7 +26,7 @@ import * as THREE from 'three';
 import { computeLayout } from './outline.js';
 import { resolveHeights, buildBody, buildCapParts, buildReferenceSwitchGeometry, triangleCount } from './solids.js';
 
-export { exportThreeMF, exportStlZip } from './export.js';
+export { exportThreeMF, exportStlZip, layoutForPrint } from './export.js';
 export { makeDesignFromText, makeDesignFromSvg, makeDesignFromImage, makeDesignFromShapes } from './design.js';
 export { traceBitmap } from './trace.js';
 export { MX } from './solids.js';
@@ -30,7 +34,7 @@ export { MX } from './solids.js';
 export const DEFAULT_PARAMS = {
   design: { spec: null, fill: 100 /* % of the available area the design fills */, rotation: 0 /* deg CCW */ },
   base: { style: 'outline' /* 'outline'|'circle'|'square'|'hexagon' */, size: 35 /* longest side, mm */, margin: 2.5 /* padding between design and cap edge */, cornerRadius: 4 },
-  cap: { thickness: 3, designHeight: 1.0, designMode: 'raised' /* 'raised'|'engraved' */ },
+  cap: { thickness: 3, designHeight: 1.0, designMode: 'inlay' /* 'inlay'|'raised'|'engraved' */ },
   // rimHeight 7.0: the MX upper housing stands 6.6 mm above the plate, so the cap's underside
   // seats 0.4 mm below the rim and is guided by the body wall. height 18.5 = 1.5 floor +
   // 8.5 cavity (5.0 lower housing + 3.3 pins + play) + 1.5 plate + 7.0 rim.
@@ -113,6 +117,20 @@ export async function buildClicker(userParams = {}) {
 
   const bounds = extents(bodyGeom);
   const capBounds = extents(cap);
+
+  // Print-plate placement (used by exportThreeMF / exportStlZip via layoutForPrint, not by the viewer):
+  // body floor-down on the left, cap on the right. Pocketed caps (inlay / engraved) are flipped
+  // 180 deg about X so the flat top lies on the plate (stem up, no supports); raised caps print
+  // cap-up resting on the stem and need supports. The design part follows the cap's transform.
+  const mode = params.cap.designMode;
+  const flipCap = mode !== 'raised';
+  const gap = 6;
+  parts[0].print = { x: -(bounds.x / 2 + gap), y: 0, flipX: false };
+  parts[1].print = { x: capBounds.x / 2 + gap, y: 0, flipX: flipCap };
+  if (design) parts[2].print = { ...parts[1].print, follow: 'cap' };
+  if (!flipCap && design) {
+    warnings.push('Raised designs print cap-up and need supports under the cap; use Inlay for a flat, two-colour cap.');
+  }
   return {
     parts,
     bounds,

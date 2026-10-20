@@ -306,8 +306,10 @@ export function buildCapParts(layout, params, warnings) {
   }).filter((d) => d.outer.length >= 3);
   const designInsideCap = designPolys.length > 0 && designPolys.every((d) => polygonContains(P, d.outer, 0.05));
 
+  // 'engraved' and 'inlay' both pocket the design into the cap top; 'inlay' adds a filler part.
+  const mode = cap.designMode === 'engraved' || cap.designMode === 'inlay' ? cap.designMode : 'raised';
   let engraveDepth = 0;
-  const wantEngrave = layout.designShapes.length > 0 && cap.designHeight > 0 && cap.designMode === 'engraved';
+  const wantEngrave = layout.designShapes.length > 0 && cap.designHeight > 0 && mode !== 'raised';
   if (wantEngrave) {
     engraveDepth = Math.min(cap.designHeight, t - 0.8);
     if (engraveDepth < cap.designHeight) warnings.push(`Engraving depth clamped to ${engraveDepth.toFixed(2)} mm to keep 0.8 mm of cap under it.`);
@@ -353,12 +355,16 @@ export function buildCapParts(layout, params, warnings) {
   }
 
   let designGeom = null;
-  if (layout.designShapes.length && cap.designHeight > 0 && cap.designMode !== 'engraved') {
+  const fillerDepth = mode === 'inlay' ? engraveDepth : cap.designHeight;
+  if (layout.designShapes.length && fillerDepth > 0.05 && mode !== 'engraved') {
     {
-      let relief = extrude(layout.designShapes, cap.designHeight, t);
+      // raised: relief standing on the cap top; inlay: filler exactly filling the pocket (flush top)
+      let relief = mode === 'inlay' ? extrude(layout.designShapes, fillerDepth, t - fillerDepth) : extrude(layout.designShapes, fillerDepth, t);
       if (!designInsideCap) {
-        // design crosses the cap edge (presets): clip it to the cap outline
-        const clip = extrude(layout.capShape, cap.designHeight + 2, t - 1);
+        // design crosses the cap edge (presets): clip it to the cap outline. The clip prism
+        // overlaps the relief by 1 mm top and bottom so no faces are coplanar.
+        const z0 = (mode === 'inlay' ? t - fillerDepth : t) - 1;
+        const clip = extrude(layout.capShape, fillerDepth + 2, z0);
         relief = csg(relief, clip, INTERSECTION);
       }
       if (triangleCount(relief) === 0) {

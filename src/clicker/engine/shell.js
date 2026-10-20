@@ -30,7 +30,16 @@ export function polygonArea(pts) {
  * exactly-collinear points, and orient CCW. Returns a new array.
  */
 export function cleanPolygon(pts) {
-  let out = pts.map((p) => ({ x: p.x, y: p.y }));
+  // 1. drop consecutive duplicates (including a repeated closing vertex) BEFORE any collinearity
+  //    test - otherwise the zero-area triple at the seam would delete a real corner.
+  let out = [];
+  for (const p of pts) {
+    const last = out[out.length - 1];
+    if (last && last.x === p.x && last.y === p.y) continue;
+    out.push({ x: p.x, y: p.y });
+  }
+  while (out.length > 1 && out[0].x === out[out.length - 1].x && out[0].y === out[out.length - 1].y) out.pop();
+  // 2. drop exactly-collinear vertices (earcut would drop them and leave T-junctions)
   let changed = true;
   while (changed && out.length >= 4) {
     changed = false;
@@ -40,10 +49,6 @@ export function cleanPolygon(pts) {
       const p = out[(i + n - 1) % n];
       const c = out[i];
       const q = out[(i + 1) % n];
-      if (c.x === q.x && c.y === q.y) {
-        changed = true;
-        continue;
-      }
       const area = (c.x - p.x) * (q.y - p.y) - (c.y - p.y) * (q.x - p.x);
       if (area === 0) {
         changed = true;
