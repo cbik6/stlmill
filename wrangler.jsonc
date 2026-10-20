@@ -4,6 +4,11 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "stlmill",
   "compatibility_date": "2026-10-01",
+  // Workers Logs + traces in the Cloudflare dashboard (Observability tab).
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
   "assets": {
     "directory": "./dist",
     // Multi-page site: unknown paths get a plain 404 rather than the hub.
