@@ -1,25 +1,220 @@
 <!doctype html>
-<!--
-  PLACEHOLDER. The multi-page Vite build (vite.config.js) expects clicker/index.html
-  to exist; the real Clicker Generator page replaces this file. Nothing here is final.
--->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Clicker Generator — STLmill</title>
-    <meta name="robots" content="noindex" />
+    <meta
+      name="description"
+      content="Put your text, logo or image on a keyboard-switch clicker. Preview it live in 3D, tune the Cherry MX fit, and download a print-ready 3MF or STL. Runs in your browser, nothing uploaded."
+    />
+    <meta name="theme-color" content="#a47a52" />
     <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
-    <style>
-      body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: system-ui, sans-serif; background: #a47a52; color: #1c1b19; }
-      main { background: #f2efe9; padding: 32px 40px; border-radius: 10px; box-shadow: 0 22px 36px rgba(0,0,0,.35); }
-      a { color: #1c1b19; }
-    </style>
+    <!-- Fonts are self-hosted (public/fonts); nothing on this site talks to a third party. -->
+    <link rel="preload" href="/fonts/barlow-semi-condensed-800-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/barlow-semi-condensed-600-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/barlow-600-latin.woff2" as="font" type="font/woff2" crossorigin />
   </head>
-  <body>
-    <main>
-      <h1>Clicker Generator — coming online</h1>
-      <p><a href="../">Back to STLmill</a></p>
+  <body class="board ck-page">
+    <a class="skip-link" href="#rail">Skip to the controls</a>
+
+    <header class="pins">
+      <a class="pinned brand" href="../" aria-label="STLmill home">
+        <span class="pin" aria-hidden="true"></span>
+        <!-- Millstone mark: stone follows currentColor, facet is brand orange. Source: public/logo/stlmill-mark.svg -->
+        <svg class="mark" viewBox="0 0 120 120" aria-hidden="true">
+          <path fill="currentColor" fill-rule="evenodd" d="M60 8a52 52 0 1 1 0 104a52 52 0 1 1 0-104zM50 50v20h20V50z" />
+          <g stroke="#F07A2A" stroke-width="2.4" stroke-linecap="round" fill="none">
+            <line x1="60" y1="78" x2="60" y2="104" /><line x1="42" y1="60" x2="16" y2="60" /><line x1="78" y1="60" x2="104" y2="60" />
+            <line x1="47" y1="73" x2="29" y2="91" /><line x1="73" y1="73" x2="91" y2="91" /><line x1="47" y1="47" x2="29" y2="29" /><line x1="73" y1="47" x2="91" y2="29" />
+          </g>
+          <path fill="#F07A2A" d="M31 13.4A52 52 0 0 1 89 13.4L60 40z" />
+        </svg>
+        <span class="wordmark">STLmill</span>
+      </a>
+      <h1 class="pinned tool-pin"><span class="pin" aria-hidden="true"></span>Clicker Generator</h1>
+    </header>
+
+    <main class="shop">
+      <!-- ================= The rail: cards hanging on the board ================= -->
+      <aside class="rail" id="rail" aria-label="Clicker controls">
+        <!-- Header card: what goes on the cap -->
+        <section class="hanger" aria-labelledby="design-heading">
+          <span class="peg" aria-hidden="true"></span>
+          <div class="swatch swatch-orange head-card">
+            <span class="hole" aria-hidden="true"></span>
+            <h2 id="design-heading" class="emb emb-orange head-label">Clicker</h2>
+
+            <fieldset class="seg" id="ck-source-kind">
+              <legend class="visually-hidden">Where the design comes from</legend>
+              <label class="seg-item"><input type="radio" name="source-kind" value="text" checked /><span>Text</span></label>
+              <label class="seg-item"><input type="radio" name="source-kind" value="svg" /><span>SVG</span></label>
+              <label class="seg-item"><input type="radio" name="source-kind" value="image" /><span>Image</span></label>
+              <label class="seg-item"><input type="radio" name="source-kind" value="sample" /><span>Samples</span></label>
+            </fieldset>
+
+            <!-- Text -->
+            <div class="source-pane" data-kind="text">
+              <label class="visually-hidden" for="ck-text">Text on the cap</label>
+              <input
+                class="field-input"
+                id="ck-text"
+                type="text"
+                maxlength="20"
+                placeholder="Your text"
+                autocomplete="off"
+                autocapitalize="characters"
+                spellcheck="false"
+                enterkeyhint="done"
+                aria-describedby="ck-text-hint"
+              />
+              <div class="head-row">
+                <div>
+                  <label class="ctl-label" for="ck-font">Typeface</label>
+                  <select id="ck-font">
+                    <option value="Barlow Semi Condensed" style="font-family: 'Barlow Semi Condensed'">Barlow Semi Condensed</option>
+                    <option value="Arial" style="font-family: Arial">Arial</option>
+                    <option value="Impact" style="font-family: Impact">Impact</option>
+                    <option value="Georgia" style="font-family: Georgia">Georgia</option>
+                    <option value="Verdana" style="font-family: Verdana">Verdana</option>
+                    <option value="Courier New" style="font-family: 'Courier New'">Courier New</option>
+                    <option value="Trebuchet MS" style="font-family: 'Trebuchet MS'">Trebuchet MS</option>
+                  </select>
+                </div>
+                <label class="toggle" for="ck-bold">
+                  <input type="checkbox" id="ck-bold" />
+                  <span class="toggle-track" aria-hidden="true"></span>
+                  Bold
+                </label>
+              </div>
+              <span class="hint" id="ck-text-hint">Up to 20 characters. Short, heavy letters print best.</span>
+            </div>
+
+            <!-- SVG -->
+            <div class="source-pane" data-kind="svg" hidden>
+              <label class="dropzone" id="ck-svg-zone" for="ck-svg-file">
+                <span class="drop-label">Drop an SVG here, or <u>browse</u></span>
+                <span class="drop-hint">Filled shapes become the design</span>
+                <input type="file" id="ck-svg-file" accept=".svg,image/svg+xml" />
+              </label>
+              <span class="file-name" id="ck-svg-name" hidden></span>
+              <span class="hint hint-error" id="ck-svg-error" role="alert" hidden></span>
+              <div style="margin-top: 12px">
+                <label class="ctl-label" for="ck-svg-text">Or paste SVG markup</label>
+                <textarea id="ck-svg-text" rows="3" spellcheck="false" placeholder="&lt;svg …&gt;"></textarea>
+              </div>
+            </div>
+
+            <!-- Image -->
+            <div class="source-pane" data-kind="image" hidden>
+              <label class="dropzone" id="ck-image-zone" for="ck-image-file">
+                <span class="drop-label">Drop a picture here, or <u>browse</u></span>
+                <span class="drop-hint">PNG, JPG or WebP · dark areas become the design</span>
+                <input type="file" id="ck-image-file" accept="image/png,image/jpeg,image/webp" />
+              </label>
+              <span class="hint hint-error" id="ck-image-error" role="alert" hidden></span>
+              <div class="img-row">
+                <label class="ctl-label" for="ck-threshold">Cut-off</label>
+                <input type="range" id="ck-threshold" min="0" max="255" step="1" value="128" />
+                <span class="ro" id="ck-threshold-ro" aria-hidden="true"></span>
+              </div>
+              <div class="img-toggles">
+                <label class="toggle" for="ck-invert">
+                  <input type="checkbox" id="ck-invert" />
+                  <span class="toggle-track" aria-hidden="true"></span>
+                  Invert
+                </label>
+                <label class="toggle" for="ck-removebg">
+                  <input type="checkbox" id="ck-removebg" />
+                  <span class="toggle-track" aria-hidden="true"></span>
+                  Remove background
+                </label>
+              </div>
+              <div class="trace" id="ck-trace" hidden>
+                <img id="ck-trace-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'/%3E" alt="The traced design: black shapes on white" width="64" height="64" />
+                <p class="trace-text"><strong id="ck-image-name"></strong>This is what gets printed. Move the cut-off if parts are missing.</p>
+              </div>
+            </div>
+
+            <!-- Samples -->
+            <div class="source-pane" data-kind="sample" hidden>
+              <span class="ctl-label" id="ck-samples-label">Pick a sample</span>
+              <div class="samples" id="ck-samples" role="group" aria-labelledby="ck-samples-label"></div>
+            </div>
+
+            <span class="hint hint-empty" id="ck-empty-hint" hidden></span>
+          </div>
+        </section>
+
+        <!-- Group cards (Footprint, Switch & fit, Finish) are built by src/clicker/ui.js -->
+        <div id="ck-groups">
+          <noscript>
+            <section class="hanger">
+              <div class="swatch swatch-white" style="padding: 24px">The Clicker Generator needs JavaScript to build and preview the model.</div>
+            </section>
+          </noscript>
+        </div>
+
+        <div class="foot" id="ck-foot">
+          <button type="button" class="foot-pin" id="ck-undo" disabled title="Undo (Ctrl+Z)">Undo</button>
+          <button type="button" class="foot-pin" id="ck-redo" disabled title="Redo (Ctrl+Shift+Z)">Redo</button>
+          <button type="button" class="foot-pin" id="ck-reset" title="Back to the default clicker">Reset</button>
+        </div>
+      </aside>
+
+      <!-- ================= The bench ================= -->
+      <section class="bench" id="bench" aria-label="3D preview">
+        <div class="bench-plate" id="ck-viewer" role="img" aria-label="Live 3D preview of the clicker. Drag to orbit, scroll to zoom."></div>
+
+        <p class="bench-empty" id="ck-bench-empty" hidden></p>
+
+        <div class="bench-toolbar" role="toolbar" aria-label="View options">
+          <fieldset class="seg seg-ink" id="ck-view-mode">
+            <legend class="visually-hidden">View</legend>
+            <label class="seg-item"><input type="radio" name="view-mode" value="assembled" checked /><span>Assembled</span></label>
+            <label class="seg-item"><input type="radio" name="view-mode" value="exploded" /><span>Exploded</span></label>
+          </fieldset>
+          <span class="tool-sep" aria-hidden="true"></span>
+          <button type="button" class="tool-btn" id="ck-tool-switch" aria-pressed="false" title="Ghost in a reference MX switch (not exported)">Show switch</button>
+          <button type="button" class="tool-btn" id="ck-tool-cut" aria-pressed="false" title="Slice the body down the middle to see inside">Cut open</button>
+          <button type="button" class="tool-btn" id="ck-tool-grid" aria-pressed="true" title="10 mm grid on the plate">Grid</button>
+          <button type="button" class="tool-btn" id="ck-tool-callouts" aria-pressed="true" title="Width and height in mm">Callouts</button>
+        </div>
+
+        <div class="bench-busy" id="ck-busy" role="status" aria-live="polite" hidden>
+          <span class="spinner" aria-hidden="true"></span>Building…
+        </div>
+
+        <div class="dock" role="group" aria-label="Export">
+          <ul class="dock-slip" id="ck-slip" role="status" aria-live="polite" hidden></ul>
+          <p class="dock-summary" id="ck-summary"><strong>— × — × — mm</strong>Building the first clicker…</p>
+          <div class="dock-actions">
+            <button type="button" class="tab" id="ck-download-3mf">
+              Download 3MF
+              <svg class="tab-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 12h16M13 5l7 7-7 7" />
+              </svg>
+            </button>
+            <button type="button" class="dock-quiet" id="ck-download-stl">STL as a zip</button>
+          </div>
+          <div class="dock-icons">
+            <button type="button" class="dock-icon" id="ck-save" aria-label="Save project file" title="Save project (JSON)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 4v11M7.5 10.5L12 15l4.5-4.5" />
+                <path d="M4 17v1.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V17" />
+              </svg>
+            </button>
+            <button type="button" class="dock-icon" id="ck-load" aria-label="Load project file" title="Load a saved project">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h8.5A1.5 1.5 0 0 1 21 9.5v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z" />
+              </svg>
+            </button>
+            <input type="file" class="file-input" id="ck-load-file" accept=".json,application/json" aria-label="Project file" />
+          </div>
+        </div>
+      </section>
     </main>
+
+    <script type="module" src="../src/clicker/main.js"></script>
   </body>
 </html>

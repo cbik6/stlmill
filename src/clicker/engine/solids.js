@@ -1,10 +1,14 @@
 // 3D solids: extrusions + CSG for body, cap, design relief and keychain ring.
 // Z is up. All dimensions mm.
 //
-// Body:   rests on z = 0, top at z = body.height. Centred on XY (design centre at origin).
-//         pocket (switch lower housing) from z = 0 up to pocketHeight = height - rimHeight - plateThickness
-//         plate from pocketHeight to plateTopZ = height - rimHeight, with the `cutout` square through it
-//         recess (cap outline + clearance) from plateTopZ up to the top.
+// Body:   rests on z = 0 with a SOLID floor, top at z = body.height. Centred on XY (design centre at origin).
+//         The MX switch is inserted from the top: its 15.6 mm flange sits on the plate's top face,
+//         the lower housing (~13.95 sq) passes through the 14.0 mm `cutout` and hangs below the plate.
+//           floor        z = 0 .. cavityBottomZ            (>= FLOOR_MIN = 1.5 mm)
+//           cavity       cavityBottomZ .. plateBottomZ     square `cavity` + 2*switchTolerance, closed
+//           plate        plateBottomZ .. plateTopZ         with the nominal `cutout` square through it
+//           recess       plateTopZ .. height               cap outline + clearance (clears the flange)
+//         plateTopZ = height - rimHeight.
 // Cap:    bottom face at z = 0, top face at z = cap.thickness; the MX stem socket hangs below
 //         to z = -stemHeight. The UI positions the cap (see `assembly.capZ` from buildClicker).
 // Design: 'raised' -> separate geometry from z = thickness to thickness + designHeight (same
@@ -17,14 +21,20 @@ import { Brush, Evaluator, SUBTRACTION, ADDITION, INTERSECTION } from 'three-bvh
 import { pointsToShape, circlePoints } from './outline.js';
 import { repairMesh } from './repair.js';
 
-// Simplified Cherry MX reference dimensions (mm)
+// Simplified Cherry MX reference dimensions (mm), plate-mount
 export const MX = {
   UPPER_HOUSING: 6.6, // plate top -> top of upper housing (where the cap's underside rests)
-  LOWER_HOUSING: 5.0, // plate bottom -> bottom of lower housing (pins excluded)
-  UPPER_TOP_SIDE: 11.5, // the upper housing tapers from 14 mm at the plate to about this
-  HOUSING_SIDE_TOP: 14.0,
-  HOUSING_SIDE_BOTTOM: 15.6,
+  FLANGE: 15.6, // square flange resting on the plate's top face
+  FLANGE_THICKNESS: 0.8,
+  UPPER_TOP_SIDE: 13.0, // the upper housing tapers from the flange to about this
+  LOWER_HOUSING: 13.95, // square section passing through the 14.0 cutout
+  LOWER_HOUSING_DEPTH: 5.0, // plate underside -> bottom of lower housing
+  PIN_LENGTH: 3.3, // metal pins / PCB legs below the lower housing
+  PIN_DIAMETER: 1.5,
+  PINS: [[-3.81, 2.54], [2.54, 5.08]], // pin positions relative to the switch centre
+  CLIP_SPRING: 0.5, // plate clips spring out this much per side just under the plate
 };
+export const FLOOR_MIN = 1.5; // minimum solid floor under the switch cavity
 
 const evaluator = new Evaluator();
 evaluator.attributes = ['position'];
@@ -94,42 +104,59 @@ export function finalize(geometry, name, warnings) {
   return geometry;
 }
 
-/** Resolve body heights, clamping and warning when the body is too short. */
+/**
+ * Resolve body heights. Returns
+ *   { height, rim, plate, cavityDepth, floor, plateTopZ, plateBottomZ, cavityBottomZ, capZ }
+ * The body is raised (with a warning) when floor + cavity + plate + rim do not fit, and the
+ * cavity is clamped so it never breaks through the FLOOR_MIN floor.
+ */
 export function resolveHeights(params, warnings) {
   const { body, cap } = params;
   const sw = params.switch;
   const rim = Math.max(0, body.rimHeight);
   const plate = Math.max(0.6, sw.plateThickness);
-  const minH = plate + rim + 4;
+  let cavityDepth = Math.max(0, sw.cavityDepth);
+  const needed = MX.LOWER_HOUSING_DEPTH + MX.PIN_LENGTH;
+  if (cavityDepth < needed) {
+    warnings.push(`Switch cavity is only ${cavityDepth.toFixed(1)} mm deep; the MX lower housing + pins need ${needed.toFixed(1)} mm, so the switch will not seat fully.`);
+  }
+  const minH = FLOOR_MIN + cavityDepth + plate + rim;
   let H = body.height;
-  if (H < minH) {
-    warnings.push(`Body height ${H} mm is too short for a ${plate} mm plate + ${rim} mm rim; raised to ${minH.toFixed(1)} mm.`);
+  if (H < minH - 1e-9) {
+    warnings.push(`Body height ${H} mm is too short for a ${FLOOR_MIN} mm floor + ${cavityDepth} mm cavity + ${plate} mm plate + ${rim} mm rim; raised to ${minH.toFixed(1)} mm.`);
     H = minH;
   }
-  const pocketHeight = H - rim - plate;
   const plateTopZ = H - rim;
+  const plateBottomZ = plateTopZ - plate;
+  // defensive clamp: never cut through the floor
+  if (plateBottomZ - cavityDepth < FLOOR_MIN - 1e-9) {
+    cavityDepth = Math.max(0, plateBottomZ - FLOOR_MIN);
+    warnings.push(`Switch cavity depth clamped to ${cavityDepth.toFixed(1)} mm to keep a ${FLOOR_MIN} mm floor.`);
+  }
+  const cavityBottomZ = plateBottomZ - cavityDepth;
   const capZ = plateTopZ + MX.UPPER_HOUSING; // z of the cap's bottom face when seated on a real MX switch
   if (capZ > H + 0.05) {
     warnings.push(`Cap sits ${(capZ - H).toFixed(1)} mm above the body rim (switch housing is taller than the recess). Set rimHeight to at least ${MX.UPPER_HOUSING} mm to seat the cap inside the rim.`);
   } else if (capZ + cap.thickness < H - 0.05) {
     warnings.push(`Cap top ends up ${(H - capZ - cap.thickness).toFixed(1)} mm below the body rim and cannot be pressed comfortably; reduce rimHeight below ${(MX.UPPER_HOUSING + cap.thickness).toFixed(1)} mm or thicken the cap.`);
   }
-  if (pocketHeight < MX.LOWER_HOUSING) {
-    warnings.push(`Switch pocket is only ${pocketHeight.toFixed(1)} mm deep; the MX lower housing is ${MX.LOWER_HOUSING} mm so the switch will protrude from the bottom.`);
-  }
-  return { height: H, rim, plate, pocketHeight, plateTopZ, capZ };
+  return { height: H, rim, plate, cavityDepth, floor: cavityBottomZ, plateTopZ, plateBottomZ, cavityBottomZ, capZ };
 }
 
-/** Body with pocket, plate cutout and cap recess (keychain ring unioned when enabled). */
+/** Body with closed switch cavity, plate cutout and cap recess (keychain ring unioned when enabled). */
 export function buildBody(layout, params, heights, warnings) {
   const sw = params.switch;
   const tol = Math.max(0, params.fit.switchTolerance);
-  const { height, pocketHeight, plateTopZ } = heights;
+  const { height, plateTopZ, plateBottomZ, cavityBottomZ, cavityDepth } = heights;
 
   let g = extrude(layout.bodyShape, height, 0);
-  const pocketSide = sw.pocket + 2 * tol;
-  g = csg(g, box(pocketSide, pocketSide, -1, pocketHeight), SUBTRACTION);
-  g = csg(g, box(sw.cutout, sw.cutout, pocketHeight - 0.5, plateTopZ + 0.5), SUBTRACTION);
+  if (cavityDepth > 0.05) {
+    // closed cavity for the lower housing + sprung clips, ending exactly at the plate underside
+    const cavitySide = Math.max(sw.cutout, sw.cavity) + 2 * tol;
+    g = csg(g, box(cavitySide, cavitySide, cavityBottomZ, plateBottomZ), SUBTRACTION);
+  }
+  // nominal cutout through the plate so the switch clips grip
+  g = csg(g, box(sw.cutout, sw.cutout, plateBottomZ - 0.5, plateTopZ + 0.5), SUBTRACTION);
   g = csg(g, extrude(layout.recessShape, height - plateTopZ + 1, plateTopZ), SUBTRACTION);
 
   if (params.keychain && params.keychain.enabled) {
@@ -253,26 +280,34 @@ export function buildCapParts(layout, params, warnings) {
 }
 
 /**
- * Simplified MX switch for the viewer, positioned for a body resting on z = 0:
- *   plate top z = body.height - rimHeight  (resolved heights, see resolveHeights)
- *   lower housing 15.6 sq: from plateTop - plateThickness - 5.0 to plateTop - plateThickness
- *   through-plate section 14 sq: to plateTop + 0.8
- *   upper housing frustum 14 -> 11.5 sq: to plateTop + 6.6
- *   stem cross 4.1 x 1.3: to plateTop + 6.6 + stemHeight
+ * Simplified plate-mount MX switch for the viewer, positioned for a body resting on z = 0
+ * (plate top z = body.height - rimHeight, see resolveHeights). Relative to the plate top P:
+ *   lower housing 13.95 sq:   P - plateThickness - 5.0  ..  P        (through the 14.0 cutout)
+ *   pins 1.5 dia x 3.3:       hanging below the lower housing at the MX pin positions
+ *   flange 15.6 sq x 0.8:     P .. P + 0.8                           (rests on the plate)
+ *   upper housing frustum:    15.6 -> 13.0 sq, P + 0.8 .. P + 6.6
+ *   stem cross 4.1 x 1.3:     P + 6.6 .. P + 6.6 + stemHeight        (cap underside at P + 6.6)
  */
 export function buildReferenceSwitchGeometry(params) {
   const sw = params.switch;
   const heights = resolveHeights(params, []);
   const plateTop = heights.plateTopZ;
-  const plateBottom = plateTop - heights.plate;
+  const plateBottom = heights.plateBottomZ;
   const parts = [];
-  parts.push(box(MX.HOUSING_SIDE_BOTTOM, MX.HOUSING_SIDE_BOTTOM, plateBottom - MX.LOWER_HOUSING, plateBottom));
-  parts.push(box(MX.HOUSING_SIDE_TOP - 0.1, MX.HOUSING_SIDE_TOP - 0.1, plateBottom - 0.01, plateTop + 0.8));
-  const frustumH = MX.UPPER_HOUSING - 0.8;
-  const frustum = new THREE.CylinderGeometry(MX.UPPER_TOP_SIDE / Math.SQRT2, (MX.HOUSING_SIDE_TOP - 0.1) / Math.SQRT2, frustumH, 4, 1);
+  const housingBottom = plateBottom - MX.LOWER_HOUSING_DEPTH;
+  parts.push(box(MX.LOWER_HOUSING, MX.LOWER_HOUSING, housingBottom, plateTop + 0.01));
+  for (const [px, py] of MX.PINS) {
+    const pin = new THREE.CylinderGeometry(MX.PIN_DIAMETER / 2, MX.PIN_DIAMETER / 2, MX.PIN_LENGTH, 12, 1);
+    pin.rotateX(Math.PI / 2);
+    pin.translate(px, py, housingBottom - MX.PIN_LENGTH / 2 + 0.005);
+    parts.push(pin);
+  }
+  parts.push(box(MX.FLANGE, MX.FLANGE, plateTop, plateTop + MX.FLANGE_THICKNESS));
+  const frustumH = MX.UPPER_HOUSING - MX.FLANGE_THICKNESS;
+  const frustum = new THREE.CylinderGeometry(MX.UPPER_TOP_SIDE / Math.SQRT2, MX.FLANGE / Math.SQRT2, frustumH, 4, 1);
   frustum.rotateY(Math.PI / 4);
   frustum.rotateX(Math.PI / 2);
-  frustum.translate(0, 0, plateTop + 0.8 + frustumH / 2);
+  frustum.translate(0, 0, plateTop + MX.FLANGE_THICKNESS + frustumH / 2 - 0.005);
   parts.push(frustum);
   const housingTop = plateTop + MX.UPPER_HOUSING;
   parts.push(box(sw.stemCrossWidth, sw.stemCrossThickness, housingTop - 0.01, housingTop + sw.stemHeight));

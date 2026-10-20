@@ -1,24 +1,13 @@
-// Builds the workflow sidebar (numbered collapsible steps), the floating
-// viewport toolbar and the export dock from a declarative schema, and binds
-// everything to state.js.
+// The rail: wires the authored header card (clicker/index.html), builds the
+// three group cards (Footprint, Switch & fit, Finish) from a declarative
+// schema, and binds everything to state.js. Every numeric control is a
+// <label> + range + fixed-digit readout; the readout never reflows.
 
-import {
-  state,
-  subscribe,
-  update,
-  commit,
-  undo,
-  redo,
-  reset,
-  canUndo,
-  canRedo,
-  getPath,
-  patchFromPath,
-} from './state.js';
+import { state, subscribe, update, commit, setParam, undo, redo, reset, canUndo, canRedo } from './state.js';
 
 // ------------------------------------------------------------------ samples
 const SAMPLE_FILES = import.meta.glob('./samples/*.svg', { query: '?raw', import: 'default', eager: true });
-const SAMPLE_ORDER = ['heart', 'paw', 'star', 'bolt', 'smiley'];
+const SAMPLE_ORDER = ['heart', 'star', 'bolt', 'paw', 'smiley'];
 const SAMPLE_LABELS = { heart: 'Heart', paw: 'Paw', star: 'Star', bolt: 'Bolt', smiley: 'Smiley' };
 
 export const SAMPLES = Object.entries(SAMPLE_FILES)
@@ -32,131 +21,7 @@ export const SAMPLES = Object.entries(SAMPLE_FILES)
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
   });
 
-export const getSample = (id) => SAMPLES.find((s) => s.id === id) || SAMPLES[0];
-
-// ------------------------------------------------------------------ labels
-const FONTS = ['Arial', 'Impact', 'Georgia', 'Verdana', 'Courier New', 'Comic Sans MS', 'Trebuchet MS', 'Segoe UI'];
-
-const STYLE_LABELS = { outline: 'Traced', circle: 'Round', square: 'Square', hexagon: 'Hex' };
-const SOURCE_LABELS = { text: 'Type', svg: 'Vector', image: 'Picture', sample: 'Starter' };
-
-const COLOR_PRESETS = {
-  'colors.body': ['#2b2b2b', '#f5f5f5', '#3b2a22', '#7a1f1f', '#2e5d34', '#6b4e16'],
-  'colors.cap': ['#f5f5f5', '#2b2b2b', '#ffd166', '#e9c46a', '#f4acb7', '#cdb4db'],
-  'colors.design': ['#f07a2a', '#e63946', '#2a9d8f', '#8a5a44', '#ffbe0b', '#ffffff'],
-};
-
-const fmt = (n, d = 1) => Number(n).toFixed(d).replace(/\.0+$/, '');
-
-// ------------------------------------------------------------------ control schema
-// Adding a parameter = adding one entry to a step's `controls` list.
-// `heading` entries break a step into sub-groups.
-export const STEPS = [
-  {
-    id: 'design',
-    title: 'What goes on top',
-    status: (s) => {
-      const src = s.source;
-      if (src.kind === 'text') return `${SOURCE_LABELS.text} · ${src.text.text?.trim() || '—'}`;
-      if (src.kind === 'svg') return `${SOURCE_LABELS.svg} · ${src.svg.svgText ? src.svg.fileName || 'pasted' : 'nothing yet'}`;
-      if (src.kind === 'image') return `${SOURCE_LABELS.image} · ${src.image.dataUrl ? src.image.fileName || 'loaded' : 'nothing yet'}`;
-      return `${SOURCE_LABELS.sample} · ${getSample(src.sample.id)?.label || ''}`;
-    },
-    custom: 'source', // rendered by sourceStep()
-  },
-  {
-    id: 'shape',
-    title: 'Footprint & cap',
-    status: (s) => `${STYLE_LABELS[s.params.base.style] || s.params.base.style} · ${fmt(s.params.base.size)} mm`,
-    controls: [
-      {
-        type: 'segmented',
-        path: 'base.style',
-        label: 'Footprint',
-        options: [
-          ['outline', 'Traced'],
-          ['circle', 'Round'],
-          ['square', 'Square'],
-          ['hexagon', 'Hex'],
-        ],
-        help: 'Shape of the cap and housing; Traced follows the silhouette of your design.',
-      },
-      { type: 'number', path: 'base.size', label: 'Width across', unit: 'mm', min: 20, max: 60, step: 0.5, help: 'Overall width of the clicker in millimetres.' },
-      { type: 'number', path: 'design.fill', label: 'Design coverage', unit: '%', min: 40, max: 100, step: 1, help: 'How much of the cap width the design spans.' },
-      {
-        type: 'number',
-        path: 'base.margin',
-        label: 'Border around design',
-        unit: 'mm',
-        min: 1,
-        max: 6,
-        step: 0.1,
-        help: 'Extra rim kept around the design when the footprint is Traced.',
-        enabledWhen: (p) => p.base.style === 'outline',
-      },
-      {
-        type: 'number',
-        path: 'base.cornerRadius',
-        label: 'Corner softness',
-        unit: 'mm',
-        min: 0,
-        max: 15,
-        step: 0.5,
-        help: 'Rounding of the corners on a Square footprint.',
-        enabledWhen: (p) => p.base.style === 'square',
-      },
-      { type: 'number', path: 'design.rotation', label: 'Spin', unit: '°', min: -180, max: 180, step: 1, help: 'Rotates the design on the cap, in degrees.' },
-      { type: 'heading', label: 'Cap' },
-      { type: 'number', path: 'cap.thickness', label: 'Cap plate', unit: 'mm', min: 2, max: 5, step: 0.1, help: 'Thickness of the plate your design sits on.' },
-      { type: 'number', path: 'cap.designHeight', label: 'Relief depth', unit: 'mm', min: 0.4, max: 2, step: 0.1, help: 'How far the design stands proud of, or sinks into, the cap.' },
-      {
-        type: 'segmented',
-        path: 'cap.designMode',
-        label: 'Relief',
-        options: [
-          ['raised', 'Raised'],
-          ['engraved', 'Recessed'],
-        ],
-        help: 'Raised prints the design as its own colour on top; Recessed sinks it into the cap.',
-      },
-    ],
-  },
-  {
-    id: 'hardware',
-    title: 'Switch & housing',
-    status: (s) => `${fmt(s.params.body.height)} mm tall · ${fmt(s.params.switch.cutout, 2)} mm clip`,
-    controls: [
-      { type: 'heading', label: 'Housing' },
-      { type: 'number', path: 'body.height', label: 'Housing height', unit: 'mm', min: 9, max: 20, step: 0.5, help: 'Height of the housing from the build plate to the top of its lip.' },
-      { type: 'number', path: 'body.rimHeight', label: 'Lip height', unit: 'mm', min: 0, max: 5, step: 0.1, help: 'Height of the lip that wraps the cap and hides the gap when pressed.' },
-      { type: 'number', path: 'body.wall', label: 'Wall thickness', unit: 'mm', min: 1.6, max: 4, step: 0.1, help: 'Thickness of the housing walls.' },
-      { type: 'heading', label: 'Switch & fit' },
-      { type: 'number', path: 'switch.cutout', label: 'Clip-in hole', unit: 'mm', min: 13.6, max: 14.4, step: 0.05, help: 'Width of the square hole an MX switch clips into (standard 14 mm).' },
-      { type: 'number', path: 'switch.pocket', label: 'Housing pocket', unit: 'mm', min: 15.2, max: 16.2, step: 0.05, help: 'Width of the recess beneath the plate that the switch body sits in.' },
-      { type: 'number', path: 'switch.plateThickness', label: 'Clip plate', unit: 'mm', min: 1.2, max: 2, step: 0.05, help: 'Thickness of the plate the switch clips onto (standard 1.5 mm).' },
-      { type: 'number', path: 'fit.switchTolerance', label: 'Switch slack', unit: 'mm', min: 0, max: 0.4, step: 0.01, help: 'Extra room around the switch hole for printers that print tight.' },
-      { type: 'number', path: 'fit.clearance', label: 'Cap play', unit: 'mm', min: 0.1, max: 0.6, step: 0.05, help: 'Gap between the cap and the inside of the lip so the cap travels freely.' },
-    ],
-  },
-  {
-    id: 'finish',
-    title: 'Loop & colours',
-    status: (s) => `${s.params.keychain.enabled ? 'Keyring loop' : 'No loop'} · 3 colours`,
-    controls: [
-      { type: 'heading', label: 'Keyring loop' },
-      { type: 'toggle', path: 'keychain.enabled', label: 'Add a keyring loop', help: 'Adds a loop to the housing so the clicker can hang from a keyring.' },
-      { type: 'number', path: 'keychain.outerRadius', label: 'Loop outer radius', unit: 'mm', min: 3, max: 8, step: 0.1, help: 'Outer radius of the loop.', enabledWhen: (p) => p.keychain.enabled },
-      { type: 'number', path: 'keychain.innerRadius', label: 'Loop hole radius', unit: 'mm', min: 1, max: 4, step: 0.1, help: 'Hole radius; 2.2 mm suits a standard split ring.', enabledWhen: (p) => p.keychain.enabled },
-      { type: 'number', path: 'keychain.angle', label: 'Loop position', unit: '°', min: 0, max: 360, step: 5, help: 'Where around the housing the loop attaches, in degrees.', enabledWhen: (p) => p.keychain.enabled },
-      { type: 'heading', label: 'Colours' },
-      { type: 'color', path: 'colors.body', label: 'Housing', help: 'Colour of the housing in the preview and the 3MF.' },
-      { type: 'color', path: 'colors.cap', label: 'Cap', help: 'Colour of the cap.' },
-      { type: 'color', path: 'colors.design', label: 'Design', help: 'Colour of the raised design.' },
-    ],
-  },
-];
-
-// ------------------------------------------------------------------ DOM helpers
+// ------------------------------------------------------------------ helpers
 export function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
@@ -169,7 +34,6 @@ export function h(tag, attrs = {}, ...children) {
         else el.style[p] = val;
       }
     } else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2).toLowerCase(), v);
-    else if (k in el && typeof v !== 'string') el[k] = v;
     else el.setAttribute(k, v === true ? '' : v);
   }
   for (const c of children.flat()) {
@@ -179,66 +43,201 @@ export function h(tag, attrs = {}, ...children) {
   return el;
 }
 
+/** Parse one authored inline SVG string into an element. */
+export function svg(markup) {
+  const t = document.createElement('template');
+  t.innerHTML = markup.trim();
+  return t.content.firstElementChild;
+}
+
+// Authored chevron for the group headers: 2 px stroke, round caps.
+const CHEVRON =
+  '<svg class="group-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6l5 5 5-5"/></svg>';
+
+const get = (obj, path) => path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 const idFor = (path) => `ck-${path.replace(/\./g, '-')}`;
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
-const roundTo = (v, step) => Number(v.toFixed(Math.max(0, Math.ceil(-Math.log10(step)))));
 
-function helpButton(text) {
-  if (!text) return null;
-  return h('span', { class: 'ck-help', title: text, role: 'img', 'aria-label': `Help: ${text}`, tabindex: 0 }, '?');
-}
+const reducedMotion = () =>
+  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-function switchRow({ id, label, input, help }) {
-  return h(
-    'div',
-    { class: 'ck-ctl ck-ctl-toggle' },
-    h('label', { class: 'ck-switch', for: id }, input, h('span', { class: 'ck-switch-track', 'aria-hidden': 'true' }), h('span', { class: 'ck-switch-label' }, label)),
-    helpButton(help),
+/** Trim a number for prose: 35 -> "35", 21.5 -> "21.5". */
+export const fmt = (n, d = 1) => Number(n).toFixed(d).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+
+const UNIT_WORDS = { mm: 'millimetres', '%': 'percent', '°': 'degrees', '': '' };
+
+// ------------------------------------------------------------------ readouts
+// Vertical tick on a single tile. Transform only, so nothing reflows.
+function tick(el, delay = 0) {
+  if (reducedMotion() || typeof el.animate !== 'function') return;
+  el.getAnimations().forEach((a) => a.cancel());
+  el.animate(
+    [
+      { transform: 'translateY(0)' },
+      { transform: 'translateY(-5px)', offset: 0.45 },
+      { transform: 'translateY(0)' },
+    ],
+    { duration: 120, delay, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' },
   );
 }
+
+// A sync pass that comes from a bulk change (load, reset, undo, redo) cascades
+// the changed tiles one at a time, 60 ms apart, across the whole rail.
+const CASCADE_STEP = 60;
+let cascadeSlot = 0;
+export const beginCascade = () => {
+  cascadeSlot = 0;
+};
+
+/** Fixed-width characters for a value: zero-padded integer part, fixed decimals, optional sign tile. */
+export function fixedChars(value, { intDigits = 2, decimals = 0, signed = false } = {}) {
+  const v = Number.isFinite(Number(value)) ? Number(value) : 0;
+  const abs = Math.abs(v).toFixed(decimals);
+  const [i, d] = abs.split('.');
+  let s = i.padStart(intDigits, '0') + (d ? '.' + d : '');
+  if (signed) s = (v < 0 && Number(abs) !== 0 ? '−' : '+') + s;
+  return s.split('');
+}
+
+/**
+ * A readout of ink tiles: one per character, narrow for the decimal point.
+ * set(value, { cascade }) updates the tiles; changed tiles tick (or cascade).
+ */
+export function createReadout({ intDigits = 2, decimals = 0, signed = false, unit = '' } = {}) {
+  const chars = fixedChars(0, { intDigits, decimals, signed });
+  const tiles = chars.map((c) => h('span', { class: c === '.' ? 'tile tile-narrow' : 'tile' }, c));
+  const root = h('span', { class: 'ro', 'aria-hidden': 'true' }, tiles, unit ? h('span', { class: 'ro-unit' }, unit) : null);
+  let timers = [];
+
+  function set(value, { cascade = false } = {}) {
+    timers.forEach(clearTimeout);
+    timers = [];
+    const next = fixedChars(value, { intDigits, decimals, signed });
+    const visible = cascade && !reducedMotion() && root.offsetParent !== null;
+    tiles.forEach((tile, i) => {
+      const c = next[i] ?? '';
+      if (tile.textContent === c) return;
+      if (visible) {
+        const delay = cascadeSlot++ * CASCADE_STEP;
+        timers.push(
+          setTimeout(() => {
+            tile.textContent = c;
+            tick(tile);
+          }, delay),
+        );
+      } else {
+        tile.textContent = c;
+        tick(tile);
+      }
+    });
+  }
+
+  return { root, set };
+}
+
+// ------------------------------------------------------------------ control schema
+const STYLE_LABELS = { outline: 'Outline', circle: 'Circle', square: 'Square', hexagon: 'Hexagon' };
+
+const COLOR_PRESETS = {
+  'colors.body': ['#2b2b2b', '#f2efe9', '#f07a2a', '#1fa39a', '#7a1f1f', '#2e5d34'],
+  'colors.cap': ['#f5f5f5', '#2b2b2b', '#f07a2a', '#ffd166', '#1fa39a', '#cdb4db'],
+  'colors.design': ['#f07a2a', '#1c1b19', '#f2efe9', '#e63946', '#1fa39a', '#ffbe0b'],
+};
+
+// Adding a parameter = adding one entry to a group's `controls` list.
+export const GROUPS = [
+  {
+    id: 'footprint',
+    title: 'Footprint',
+    status: (s) => `${STYLE_LABELS[s.params.base.style] || s.params.base.style} · ${fmt(s.params.base.size)} mm`,
+    controls: [
+      {
+        type: 'segmented',
+        path: 'base.style',
+        label: 'Style',
+        options: [
+          ['outline', 'Outline'],
+          ['circle', 'Circle'],
+          ['square', 'Square'],
+          ['hexagon', 'Hex'],
+        ],
+      },
+      { type: 'range', path: 'base.size', label: 'Size', unit: 'mm', min: 20, max: 60, step: 0.5 },
+      { type: 'range', path: 'design.fill', label: 'Fill', unit: '%', min: 40, max: 100, step: 1 },
+      { type: 'range', path: 'base.margin', label: 'Margin', unit: 'mm', min: 1, max: 6, step: 0.1, when: (p) => p.base.style === 'outline' },
+      { type: 'range', path: 'base.cornerRadius', label: 'Corner radius', unit: 'mm', min: 0, max: 10, step: 0.5, when: (p) => p.base.style === 'square' },
+      { type: 'range', path: 'design.rotation', label: 'Rotation', unit: '°', min: -180, max: 180, step: 1, signed: true },
+    ],
+  },
+  {
+    id: 'fit',
+    title: 'Switch & fit',
+    status: (s) => `MX · ${s.params.switch.cutout.toFixed(1)} / ${s.params.switch.pocket.toFixed(1)}`,
+    controls: [
+      { type: 'range', path: 'body.height', label: 'Body height', unit: 'mm', min: 12, max: 22, step: 0.5 },
+      { type: 'range', path: 'body.rimHeight', label: 'Rim height', unit: 'mm', min: 4, max: 9, step: 0.1 },
+      { type: 'range', path: 'body.wall', label: 'Wall', unit: 'mm', min: 1.6, max: 4, step: 0.1 },
+      { type: 'range', path: 'switch.cutout', label: 'Cutout', unit: 'mm', min: 13.6, max: 14.4, step: 0.1 },
+      { type: 'range', path: 'switch.pocket', label: 'Pocket', unit: 'mm', min: 15.2, max: 16.2, step: 0.1 },
+      { type: 'range', path: 'switch.plateThickness', label: 'Plate', unit: 'mm', min: 1.2, max: 2, step: 0.1 },
+      { type: 'range', path: 'fit.switchTolerance', label: 'Switch tolerance', unit: 'mm', min: 0, max: 0.4, step: 0.05 },
+      { type: 'range', path: 'fit.clearance', label: 'Cap clearance', unit: 'mm', min: 0.1, max: 0.6, step: 0.05 },
+      { type: 'range', path: 'cap.thickness', label: 'Cap thickness', unit: 'mm', min: 2, max: 5, step: 0.1 },
+      { type: 'range', path: 'cap.designHeight', label: 'Design height', unit: 'mm', min: 0.4, max: 2, step: 0.1 },
+      {
+        type: 'segmented',
+        path: 'cap.designMode',
+        label: 'Design',
+        options: [
+          ['raised', 'Raised'],
+          ['engraved', 'Engraved'],
+        ],
+      },
+    ],
+  },
+  {
+    id: 'finish',
+    title: 'Finish',
+    status: (s) => `3 colours · loop ${s.params.keychain.enabled ? 'on' : 'off'}`,
+    controls: [
+      { type: 'color', path: 'colors.body', label: 'Body' },
+      { type: 'color', path: 'colors.cap', label: 'Cap' },
+      { type: 'color', path: 'colors.design', label: 'Design' },
+      { type: 'toggle', path: 'keychain.enabled', label: 'Keychain loop' },
+      { type: 'range', path: 'keychain.outerRadius', label: 'Loop outer', unit: 'mm', min: 3.5, max: 6, step: 0.1, when: (p) => p.keychain.enabled },
+      { type: 'range', path: 'keychain.innerRadius', label: 'Loop hole', unit: 'mm', min: 1.5, max: 3, step: 0.1, when: (p) => p.keychain.enabled },
+      { type: 'range', path: 'keychain.angle', label: 'Loop angle', unit: '°', min: 0, max: 360, step: 5, when: (p) => p.keychain.enabled },
+    ],
+  },
+];
 
 // ------------------------------------------------------------------ control factories
-function headingControl(def) {
-  return { root: h('h3', { class: 'ck-subhead' }, def.label), sync() {} };
-}
+const decimalsOf = (step) => Math.max(0, Math.ceil(-Math.log10(step) - 1e-9));
+const intDigitsOf = (min, max) => String(Math.floor(Math.max(Math.abs(min), Math.abs(max)))).length;
 
-function numberControl(def) {
+function rangeControl(def) {
   const id = idFor(def.path);
-  const number = h('input', { type: 'number', id, min: def.min, max: def.max, step: def.step, class: 'ck-num', inputmode: 'decimal' });
-  const range = h('input', { type: 'range', min: def.min, max: def.max, step: def.step, class: 'ck-range', 'aria-label': `${def.label} slider`, tabindex: -1 });
+  const decimals = decimalsOf(def.step);
+  const range = h('input', { type: 'range', id, min: def.min, max: def.max, step: def.step });
+  const ro = createReadout({ intDigits: intDigitsOf(def.min, def.max), decimals, signed: !!def.signed, unit: def.unit });
+  const root = h('div', { class: 'ctl ctl-range' }, h('label', { for: id }, def.label), range, ro.root);
 
-  const apply = (raw, opts) => {
-    const v = roundTo(clamp(Number(raw), def.min, def.max), def.step);
-    if (Number.isNaN(v)) return;
-    number.value = String(v);
-    range.value = String(v);
-    update({ params: patchFromPath(def.path, v) }, opts);
-  };
-
-  range.addEventListener('input', () => apply(range.value, { transient: true, reason: 'slider' }));
-  range.addEventListener('change', () => commit());
-  number.addEventListener('change', () => apply(number.value));
-  number.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') apply(number.value);
+  range.addEventListener('input', () => {
+    const v = clamp(Number(range.value), def.min, def.max);
+    setParam(def.path, v, { transient: true, reason: 'slider' });
   });
-
-  const root = h(
-    'div',
-    { class: 'ck-ctl ck-ctl-number' },
-    h('div', { class: 'ck-ctl-head' }, h('label', { for: id }, def.label), helpButton(def.help)),
-    h('div', { class: 'ck-ctl-row' }, range, h('div', { class: 'ck-num-wrap' }, number, def.unit ? h('span', { class: 'ck-unit' }, def.unit) : null)),
-  );
+  range.addEventListener('change', () => commit());
 
   return {
     root,
-    sync(params) {
-      const v = getPath(params, def.path);
+    sync(params, meta) {
+      const v = get(params, def.path);
       if (v === undefined) return;
-      if (document.activeElement !== number) number.value = String(v);
-      range.value = String(v);
-      range.style.setProperty('--fill', `${((v - def.min) / (def.max - def.min)) * 100}%`);
-      const enabled = def.enabledWhen ? !!def.enabledWhen(params) : true;
-      number.disabled = range.disabled = !enabled;
+      if (range.value !== String(v)) range.value = String(v);
+      ro.set(v, { cascade: !!meta?.cascade });
+      range.setAttribute('aria-valuetext', `${fmt(v, decimals)} ${UNIT_WORDS[def.unit] ?? def.unit}`.trim());
+      const enabled = def.when ? !!def.when(params) : true;
+      range.disabled = !enabled;
       root.classList.toggle('is-disabled', !enabled);
     },
   };
@@ -248,29 +247,25 @@ function segmentedControl(def) {
   const name = idFor(def.path);
   const inputs = [];
   const seg = h(
-    'div',
-    { class: 'ck-seg', role: 'radiogroup', 'aria-label': def.label },
+    'fieldset',
+    { class: 'seg' },
+    h('legend', { class: 'visually-hidden' }, def.label),
     def.options.map(([value, label]) => {
       const input = h('input', { type: 'radio', name, value, id: `${name}-${value}` });
       input.addEventListener('change', () => {
-        if (input.checked) update({ params: patchFromPath(def.path, value) });
+        if (input.checked) setParam(def.path, value);
       });
       inputs.push(input);
-      return h('label', { class: 'ck-seg-item', for: `${name}-${value}` }, input, h('span', {}, label));
+      return h('label', { class: 'seg-item' }, input, h('span', {}, label));
     }),
   );
-  const root = h(
-    'div',
-    { class: 'ck-ctl ck-ctl-seg' },
-    h('div', { class: 'ck-ctl-head' }, h('span', { class: 'ck-label' }, def.label), helpButton(def.help)),
-    seg,
-  );
+  const root = h('div', { class: 'ctl ctl-stack' }, h('span', { class: 'ctl-label', 'aria-hidden': 'true' }, def.label), seg);
   return {
     root,
     sync(params) {
-      const v = getPath(params, def.path);
+      const v = get(params, def.path);
       inputs.forEach((i) => (i.checked = i.value === v));
-      const enabled = def.enabledWhen ? !!def.enabledWhen(params) : true;
+      const enabled = def.when ? !!def.when(params) : true;
       inputs.forEach((i) => (i.disabled = !enabled));
       root.classList.toggle('is-disabled', !enabled);
     },
@@ -279,14 +274,19 @@ function segmentedControl(def) {
 
 function toggleControl(def) {
   const id = idFor(def.path);
-  const input = h('input', { type: 'checkbox', id, class: 'ck-switch-input' });
-  input.addEventListener('change', () => update({ params: patchFromPath(def.path, input.checked) }));
-  const root = switchRow({ id, label: def.label, input, help: def.help });
+  const input = h('input', { type: 'checkbox', id });
+  input.addEventListener('change', () => setParam(def.path, input.checked));
+  const root = h(
+    'div',
+    { class: 'ctl ctl-toggle' },
+    h('label', { for: id }, def.label),
+    h('label', { class: 'toggle', for: id, 'aria-hidden': 'true' }, input, h('span', { class: 'toggle-track' })),
+  );
   return {
     root,
     sync(params) {
-      input.checked = !!getPath(params, def.path);
-      const enabled = def.enabledWhen ? !!def.enabledWhen(params) : true;
+      input.checked = !!get(params, def.path);
+      const enabled = def.when ? !!def.when(params) : true;
       input.disabled = !enabled;
       root.classList.toggle('is-disabled', !enabled);
     },
@@ -295,42 +295,44 @@ function toggleControl(def) {
 
 function colorControl(def) {
   const id = idFor(def.path);
-  const input = h('input', { type: 'color', id, class: 'ck-color' });
-  const set = (v, opts) => update({ params: patchFromPath(def.path, v) }, opts);
-  input.addEventListener('input', () => set(input.value, { transient: true, reason: 'color' }));
+  const input = h('input', { type: 'color', id });
+  input.addEventListener('input', () => setParam(def.path, input.value, { transient: true, reason: 'color' }));
   input.addEventListener('change', () => {
-    set(input.value, { transient: true });
+    setParam(def.path, input.value, { transient: true, reason: 'color' });
     commit();
   });
-  const swatches = (COLOR_PRESETS[def.path] || []).map((c) => {
-    const b = h('button', { type: 'button', class: 'ck-swatch', style: { '--swatch': c }, 'aria-label': `${def.label} ${c}`, title: c, dataset: { color: c } });
-    b.addEventListener('click', () => set(c));
+  const chips = (COLOR_PRESETS[def.path] || []).map((c) => {
+    const b = h('button', {
+      type: 'button',
+      class: 'chip',
+      style: { '--chip': c },
+      'aria-label': `${def.label} ${c}`,
+      'aria-pressed': 'false',
+      title: c,
+      dataset: { color: c },
+    });
+    b.addEventListener('click', () => setParam(def.path, c));
     return b;
   });
-  const root = h(
-    'div',
-    { class: 'ck-ctl ck-ctl-color' },
-    h('div', { class: 'ck-ctl-head' }, h('label', { for: id }, def.label), helpButton(def.help)),
-    h('div', { class: 'ck-ctl-row' }, h('span', { class: 'ck-color-wrap' }, input), h('div', { class: 'ck-swatches' }, swatches)),
-  );
+  const root = h('div', { class: 'ctl ctl-color' }, h('label', { for: id }, def.label), input, h('div', { class: 'chips' }, chips));
   return {
     root,
     sync(params) {
-      const v = getPath(params, def.path);
-      if (typeof v === 'string' && document.activeElement !== input) input.value = v;
-      swatches.forEach((s) => s.classList.toggle('is-active', s.dataset.color.toLowerCase() === String(v).toLowerCase()));
+      const v = String(get(params, def.path) || '#000000').toLowerCase();
+      if (document.activeElement !== input && input.value !== v) input.value = v;
+      chips.forEach((c) => c.setAttribute('aria-pressed', c.dataset.color === v ? 'true' : 'false'));
     },
   };
 }
 
-const FACTORIES = { heading: headingControl, number: numberControl, segmented: segmentedControl, toggle: toggleControl, color: colorControl };
+const FACTORIES = { range: rangeControl, segmented: segmentedControl, toggle: toggleControl, color: colorControl };
 
 // ------------------------------------------------------------------ files
 const readFileAsText = (file) =>
   new Promise((res, rej) => {
     const r = new FileReader();
     r.onload = () => res(String(r.result));
-    r.onerror = () => rej(r.error);
+    r.onerror = () => rej(r.error || new Error('Could not read the file.'));
     r.readAsText(file);
   });
 
@@ -338,25 +340,24 @@ const readFileAsDataUrl = (file) =>
   new Promise((res, rej) => {
     const r = new FileReader();
     r.onload = () => res(String(r.result));
-    r.onerror = () => rej(r.error);
+    r.onerror = () => rej(r.error || new Error('Could not read the file.'));
     r.readAsDataURL(file);
   });
 
-function dropZone({ accept, label, hint, onFile, id }) {
-  const input = h('input', { type: 'file', accept, id, class: 'ck-file-input' });
-  const zone = h(
-    'label',
-    { class: 'ck-dropzone', for: id },
-    h('span', { class: 'ck-drop-label' }, label),
-    h('span', { class: 'ck-drop-hint' }, hint),
-    input,
-  );
+const extOf = (name) => (String(name || '').match(/\.([a-z0-9]+)$/i) || [, ''])[1].toLowerCase();
+
+/** Wire a drop zone (a <label> wrapping a file input) to a handler that may throw a user-facing Error. */
+function wireDropZone(zone, input, errorEl, onFile) {
+  const showError = (msg) => {
+    errorEl.textContent = msg;
+    errorEl.hidden = !msg;
+  };
   const handle = (file) => {
     if (!file) return;
-    Promise.resolve(onFile(file)).catch((err) => {
-      console.error(err);
-      alert(`Could not read ${file.name}: ${err.message || err}`);
-    });
+    showError('');
+    Promise.resolve()
+      .then(() => onFile(file))
+      .catch((err) => showError(err?.message || String(err)));
   };
   input.addEventListener('change', () => {
     handle(input.files?.[0]);
@@ -375,334 +376,243 @@ function dropZone({ accept, label, hint, onFile, id }) {
     });
   }
   zone.addEventListener('drop', (e) => handle(e.dataTransfer?.files?.[0]));
-  return zone;
+  return { showError };
 }
 
-// ------------------------------------------------------------------ design step (source import)
-const SOURCE_KINDS = [
-  ['text', 'Type'],
-  ['svg', 'Vector'],
-  ['image', 'Picture'],
-  ['sample', 'Starters'],
-];
+// ------------------------------------------------------------------ header card (authored in HTML)
+function wireHeader(rail) {
+  const q = (sel) => rail.querySelector(sel);
+  const kindInputs = [...rail.querySelectorAll('#ck-source-kind input')];
+  const panes = [...rail.querySelectorAll('.source-pane')];
 
-function sourceStep() {
-  const kindInputs = [];
-  const kindSeg = h(
-    'div',
-    { class: 'ck-seg ck-seg-kind', role: 'radiogroup', 'aria-label': 'Where the design comes from' },
-    SOURCE_KINDS.map(([value, label]) => {
-      const id = `ck-src-${value}`;
-      const input = h('input', { type: 'radio', name: 'ck-source-kind', value, id });
-      input.addEventListener('change', () => {
-        if (input.checked) update({ source: { kind: value } }, { reason: 'source-kind' });
-      });
-      kindInputs.push(input);
-      return h('label', { class: 'ck-seg-item', for: id }, input, h('span', {}, label));
+  kindInputs.forEach((input) =>
+    input.addEventListener('change', () => {
+      if (input.checked) update({ source: { kind: input.value } }, { reason: 'source-kind' });
     }),
   );
 
-  // --- Type
-  const textarea = h('textarea', { id: 'ck-text', class: 'ck-textarea ck-textarea-big', rows: 2, maxlength: 40, placeholder: 'A word, initials, a number…' });
-  textarea.addEventListener('input', () => update({ source: { kind: 'text', text: { text: textarea.value } } }, { transient: true, reason: 'text' }));
-  textarea.addEventListener('blur', () => commit());
-  const fontSelect = h('select', { id: 'ck-font', class: 'ck-select' }, FONTS.map((f) => h('option', { value: f, style: { fontFamily: f } }, f)));
-  fontSelect.addEventListener('change', () => update({ source: { text: { fontFamily: fontSelect.value } } }));
-  const bold = h('input', { type: 'checkbox', id: 'ck-bold', class: 'ck-switch-input' });
-  bold.addEventListener('change', () => update({ source: { text: { bold: bold.checked } } }));
-  const textPane = h(
-    'div',
-    { class: 'ck-source-pane', dataset: { kind: 'text' } },
-    h('label', { for: 'ck-text', class: 'ck-label' }, 'Your text'),
-    textarea,
-    h('div', { class: 'ck-ctl' }, h('div', { class: 'ck-ctl-head' }, h('label', { for: 'ck-font' }, 'Typeface')), fontSelect),
-    switchRow({ id: 'ck-bold', label: 'Heavy weight', input: bold, help: 'Heavier strokes print more reliably at small sizes.' }),
-    h('p', { class: 'ck-note' }, 'Short words read best. Thin typefaces may want more relief depth.'),
-  );
+  // --- Text
+  const text = q('#ck-text');
+  const font = q('#ck-font');
+  const bold = q('#ck-bold');
+  text.addEventListener('input', () => update({ source: { kind: 'text', text: { text: text.value } } }, { transient: true, reason: 'text' }));
+  text.addEventListener('change', () => commit());
+  font.addEventListener('change', () => update({ source: { text: { fontFamily: font.value } } }, { reason: 'font' }));
+  bold.addEventListener('change', () => update({ source: { text: { bold: bold.checked } } }, { reason: 'bold' }));
 
-  // --- Vector
-  const svgTextarea = h('textarea', { id: 'ck-svg-text', class: 'ck-textarea ck-mono', rows: 5, placeholder: '…or paste <svg> markup here', spellcheck: false });
-  const svgFileName = h('div', { class: 'ck-filename' }, 'Nothing loaded yet');
-  svgTextarea.addEventListener('input', () => {
-    update({ source: { kind: 'svg', svg: { svgText: svgTextarea.value, fileName: '' } } }, { transient: true, reason: 'svg-text' });
+  // --- SVG
+  const svgName = q('#ck-svg-name');
+  const svgText = q('#ck-svg-text');
+  wireDropZone(q('#ck-svg-zone'), q('#ck-svg-file'), q('#ck-svg-error'), async (file) => {
+    const ext = extOf(file.name);
+    if (ext !== 'svg' && file.type !== 'image/svg+xml') {
+      if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'].includes(ext)) {
+        throw new Error(`That is a ${ext.toUpperCase()} picture. Switch to Image to use it, or drop an .svg here.`);
+      }
+      throw new Error(`“${file.name}” is not an .svg file.`);
+    }
+    const markup = await readFileAsText(file);
+    if (!/<svg[\s>]/i.test(markup)) throw new Error(`“${file.name}” has no <svg> element inside.`);
+    update({ source: { kind: 'svg', svg: { svgText: markup, fileName: file.name } } }, { reason: 'svg-file' });
   });
-  svgTextarea.addEventListener('blur', () => commit());
-  const svgPane = h(
-    'div',
-    { class: 'ck-source-pane', dataset: { kind: 'svg' } },
-    dropZone({
-      id: 'ck-svg-file',
-      accept: '.svg,image/svg+xml',
-      label: 'Drop an SVG here, or browse',
-      hint: 'Filled shapes are used · strokes are ignored',
-      onFile: async (file) => {
-        const svgText = await readFileAsText(file);
-        update({ source: { kind: 'svg', svg: { svgText, fileName: file.name } } }, { reason: 'svg-file' });
-      },
-    }),
-    svgFileName,
-    h('label', { for: 'ck-svg-text', class: 'ck-label' }, 'Markup'),
-    svgTextarea,
+  svgText.addEventListener('input', () =>
+    update({ source: { kind: 'svg', svg: { svgText: svgText.value, fileName: '' } } }, { transient: true, reason: 'svg-text' }),
   );
+  svgText.addEventListener('change', () => commit());
 
-  // --- Picture
-  const imgPreview = h('img', { class: 'ck-preview-img', alt: 'Traced design preview', hidden: true });
-  const imgFileName = h('div', { class: 'ck-filename' }, 'Nothing loaded yet');
-  const thresholdNum = h('input', { type: 'number', id: 'ck-img-threshold', min: 0, max: 255, step: 1, class: 'ck-num' });
-  const thresholdRange = h('input', { type: 'range', min: 0, max: 255, step: 1, class: 'ck-range', 'aria-label': 'Darkness cut-off slider', tabindex: -1 });
-  const setThreshold = (raw, opts) => {
-    const v = clamp(Math.round(Number(raw) || 0), 0, 255);
-    thresholdNum.value = thresholdRange.value = String(v);
-    update({ source: { image: { threshold: v } } }, opts);
-  };
-  thresholdRange.addEventListener('input', () => setThreshold(thresholdRange.value, { transient: true, reason: 'slider' }));
-  thresholdRange.addEventListener('change', () => commit());
-  thresholdNum.addEventListener('change', () => setThreshold(thresholdNum.value));
-  const invert = h('input', { type: 'checkbox', id: 'ck-img-invert', class: 'ck-switch-input' });
-  invert.addEventListener('change', () => update({ source: { image: { invert: invert.checked } } }));
-  const removeBg = h('input', { type: 'checkbox', id: 'ck-img-removebg', class: 'ck-switch-input' });
-  removeBg.addEventListener('change', () => update({ source: { image: { removeBackground: removeBg.checked } } }));
+  // --- Image
+  const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
+  const threshold = q('#ck-threshold');
+  const thresholdRo = createReadout({ intDigits: 3 });
+  q('#ck-threshold-ro').replaceWith(thresholdRo.root);
+  const invert = q('#ck-invert');
+  const removeBg = q('#ck-removebg');
+  const trace = q('#ck-trace');
+  const traceImg = q('#ck-trace-img');
+  const imageName = q('#ck-image-name');
+  wireDropZone(q('#ck-image-zone'), q('#ck-image-file'), q('#ck-image-error'), async (file) => {
+    const ext = extOf(file.name);
+    if (ext === 'svg' || file.type === 'image/svg+xml') throw new Error('That is an SVG. Switch to SVG to use it as vector shapes.');
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) throw new Error(`“${file.name}” is not a PNG, JPG or WebP.`);
+    if (file.size > MAX_IMAGE_BYTES) throw new Error('That picture is over 12 MB. Try a smaller export.');
+    const dataUrl = await readFileAsDataUrl(file);
+    update({ source: { kind: 'image', image: { dataUrl, fileName: file.name } } }, { reason: 'image-file' });
+  });
+  threshold.addEventListener('input', () => {
+    const v = clamp(Math.round(Number(threshold.value) || 0), 0, 255);
+    update({ source: { image: { threshold: v } } }, { transient: true, reason: 'slider' });
+  });
+  threshold.addEventListener('change', () => commit());
+  invert.addEventListener('change', () => update({ source: { image: { invert: invert.checked } } }, { reason: 'invert' }));
+  removeBg.addEventListener('change', () => update({ source: { image: { removeBackground: removeBg.checked } } }, { reason: 'remove-bg' }));
 
-  const imagePane = h(
-    'div',
-    { class: 'ck-source-pane', dataset: { kind: 'image' } },
-    dropZone({
-      id: 'ck-image-file',
-      accept: 'image/png,image/jpeg,image/webp',
-      label: 'Drop a picture here, or browse',
-      hint: 'PNG, JPG or WebP · dark areas become the design',
-      onFile: async (file) => {
-        const dataUrl = await readFileAsDataUrl(file);
-        update({ source: { kind: 'image', image: { dataUrl, fileName: file.name } } }, { reason: 'image-file' });
-      },
-    }),
-    imgFileName,
-    h(
-      'div',
-      { class: 'ck-ctl ck-ctl-number' },
-      h('div', { class: 'ck-ctl-head' }, h('label', { for: 'ck-img-threshold' }, 'Darkness cut-off'), helpButton('Pixels darker than this value (0–255) become part of the design.')),
-      h('div', { class: 'ck-ctl-row' }, thresholdRange, h('div', { class: 'ck-num-wrap' }, thresholdNum)),
-    ),
-    switchRow({ id: 'ck-img-invert', label: 'Flip light and dark', input: invert, help: 'Swap which pixels count as design and which as background.' }),
-    switchRow({ id: 'ck-img-removebg', label: 'Drop the background', input: removeBg, help: 'Removes the background colour so only the subject is traced.' }),
-    h('div', { class: 'ck-preview' }, h('div', { class: 'ck-micro' }, 'Traced result'), imgPreview),
-  );
-
-  // --- Starters
+  // --- Samples
+  const samplesEl = q('#ck-samples');
   const sampleButtons = SAMPLES.map((s) => {
-    const b = h('button', { type: 'button', class: 'ck-sample', 'aria-label': `Use the ${s.label} starter`, title: s.label, dataset: { id: s.id } });
+    const b = h('button', { type: 'button', class: 'sample', 'aria-label': s.label, 'aria-pressed': 'false', title: s.label, dataset: { id: s.id } });
     b.innerHTML = s.svgText;
-    b.append(h('span', { class: 'ck-sample-label' }, s.label));
+    b.querySelector('svg')?.setAttribute('aria-hidden', 'true');
     b.addEventListener('click', () => update({ source: { kind: 'sample', sample: { id: s.id } } }, { reason: 'sample' }));
     return b;
   });
-  const samplesPane = h(
-    'div',
-    { class: 'ck-source-pane', dataset: { kind: 'sample' } },
-    h('div', { class: 'ck-samples' }, sampleButtons),
-    h('p', { class: 'ck-note' }, 'Bold silhouettes print best. Try the Traced footprint with these.'),
-  );
+  samplesEl.replaceChildren(...sampleButtons);
 
-  const panes = [textPane, svgPane, imagePane, samplesPane];
-  const root = h('div', { class: 'ck-source' }, kindSeg, ...panes);
+  const emptyHint = q('#ck-empty-hint');
+  const fieldFont = (fam) => (/[\s"']/.test(fam) ? `"${fam}", ${getComputedStyle(document.documentElement).getPropertyValue('--font-display')}` : fam);
 
-  const api = {
-    root,
-    sync(s) {
+  return {
+    sync(s, meta) {
       const src = s.source;
       kindInputs.forEach((i) => (i.checked = i.value === src.kind));
       panes.forEach((p) => (p.hidden = p.dataset.kind !== src.kind));
 
-      const img = src.image;
-      if (document.activeElement !== thresholdNum) thresholdNum.value = String(img.threshold);
-      thresholdRange.value = String(img.threshold);
-      thresholdRange.style.setProperty('--fill', `${(img.threshold / 255) * 100}%`);
-      invert.checked = !!img.invert;
-      removeBg.checked = !!img.removeBackground;
-      imgFileName.textContent = img.dataUrl ? img.fileName || 'Picture loaded' : 'Nothing loaded yet';
-
-      if (document.activeElement !== svgTextarea) svgTextarea.value = src.svg.svgText || '';
-      svgFileName.textContent = src.svg.svgText ? src.svg.fileName || 'Pasted markup' : 'Nothing loaded yet';
-
-      if (document.activeElement !== textarea) textarea.value = src.text.text ?? '';
-      fontSelect.value = src.text.fontFamily;
-      textarea.style.fontFamily = src.text.fontFamily;
-      textarea.style.fontWeight = src.text.bold ? '700' : '400';
+      if (document.activeElement !== text) text.value = src.text.text ?? '';
+      font.value = src.text.fontFamily;
+      if (font.value !== src.text.fontFamily) font.selectedIndex = 1; // unknown family in a loaded project: show Arial
+      text.style.fontFamily = fieldFont(src.text.fontFamily);
+      text.style.fontWeight = src.text.bold ? '800' : '400';
       bold.checked = !!src.text.bold;
 
-      sampleButtons.forEach((b) => b.classList.toggle('is-active', b.dataset.id === src.sample.id));
+      if (document.activeElement !== svgText) svgText.value = src.svg.svgText || '';
+      svgName.textContent = src.svg.fileName ? `Loaded ${src.svg.fileName}` : '';
+      svgName.hidden = !src.svg.fileName;
+
+      const img = src.image;
+      if (threshold.value !== String(img.threshold)) threshold.value = String(img.threshold);
+      thresholdRo.set(img.threshold, { cascade: !!meta?.cascade });
+      threshold.setAttribute('aria-valuetext', `${img.threshold} of 255`);
+      invert.checked = !!img.invert;
+      removeBg.checked = img.removeBackground !== false;
+      imageName.textContent = img.fileName || 'Picture';
+
+      sampleButtons.forEach((b) => b.setAttribute('aria-pressed', b.dataset.id === src.sample.id ? 'true' : 'false'));
     },
-    setPreview(dataUrl) {
-      if (dataUrl) {
-        imgPreview.src = dataUrl;
-        imgPreview.hidden = false;
+    // Called with the derived design spec after each build.
+    setSpec(spec) {
+      const src = state.source;
+      const hasShapes = !!(spec && Array.isArray(spec.shapes) && spec.shapes.length);
+      if (src.kind === 'image' && spec?.previewDataUrl) {
+        traceImg.src = spec.previewDataUrl;
+        trace.hidden = false;
       } else {
-        imgPreview.removeAttribute('src');
-        imgPreview.hidden = true;
+        trace.hidden = true;
       }
+      if (hasShapes || !spec) {
+        emptyHint.hidden = true;
+        return;
+      }
+      const hint = {
+        text: 'Nothing on the cap yet. Type up to 20 characters above.',
+        svg: 'Nothing on the cap yet. Drop an SVG, or paste its markup.',
+        image: 'Nothing on the cap yet. Drop a picture above; if it traced to nothing, move the cut-off.',
+        sample: 'Pick a sample above.',
+      }[src.kind];
+      emptyHint.textContent = hint || 'Nothing on the cap yet.';
+      emptyHint.hidden = false;
     },
   };
-  return api;
 }
 
-// ------------------------------------------------------------------ sidebar
-export function initSidebar(container, { steps = STEPS } = {}) {
-  const stepEls = [];
+// ------------------------------------------------------------------ group cards
+const STORAGE_KEY = 'stlmill-clicker-group';
+
+function buildGroups(container) {
+  const groups = [];
   const syncers = [];
-  let sourceApi = null;
 
-  const list = h('div', { class: 'ck-steps' });
-
-  steps.forEach((step, i) => {
-    const bodyId = `ck-step-body-${step.id}`;
-    const statusEl = h('span', { class: 'ck-step-status' });
-    const header = h(
+  GROUPS.forEach((def) => {
+    const bodyId = `ck-group-${def.id}`;
+    const statusEl = h('span', { class: 'group-status' });
+    const head = h(
       'button',
-      { type: 'button', class: 'ck-step-head', 'aria-expanded': 'false', 'aria-controls': bodyId },
-      h('span', { class: 'ck-step-num ck-micro' }, `Step ${i + 1}`),
-      h('span', { class: 'ck-step-text' }, h('span', { class: 'ck-step-title' }, step.title), statusEl),
-      h('span', { class: 'ck-step-chevron', 'aria-hidden': 'true' }),
+      { type: 'button', class: 'group-head', 'aria-expanded': 'false', 'aria-controls': bodyId },
+      h('span', { class: 'group-title' }, def.title),
+      statusEl,
+      svg(CHEVRON),
     );
-    const body = h('div', { class: 'ck-step-body', id: bodyId, role: 'region', 'aria-label': step.title });
-    const inner = h('div', { class: 'ck-step-inner' });
-    body.append(inner);
 
-    if (step.custom === 'source') {
-      sourceApi = sourceStep();
-      inner.append(sourceApi.root);
-      syncers.push((s) => sourceApi.sync(s));
-    } else {
-      for (const def of step.controls || []) {
-        const ctl = FACTORIES[def.type](def);
-        inner.append(ctl.root);
-        syncers.push((s) => ctl.sync(s.params));
-      }
+    const body = h('div', { class: 'group-body', id: bodyId, hidden: true });
+    for (const c of def.controls) {
+      const ctl = FACTORIES[c.type](c);
+      body.append(ctl.root);
+      syncers.push((s, meta) => ctl.sync(s.params, meta));
     }
     syncers.push((s) => {
-      statusEl.textContent = step.status ? step.status(s) : '';
+      statusEl.textContent = def.status(s);
     });
 
-    const el = h('section', { class: 'ck-step', dataset: { step: step.id } }, header, body);
-    header.addEventListener('click', () => open(i));
-    stepEls.push({ el, header, body });
-    list.append(el);
+    const card = h('div', { class: 'swatch swatch-white' }, h('span', { class: 'hole', 'aria-hidden': 'true' }), h('h3', {}, head), body);
+    const el = h('section', { class: 'hanger group', dataset: { group: def.id } }, h('span', { class: 'peg', 'aria-hidden': 'true' }), card);
+    head.addEventListener('click', () => open(def.id, head.getAttribute('aria-expanded') === 'true'));
+    groups.push({ id: def.id, el, head, body });
+    container.append(el);
   });
 
-  function open(i) {
-    stepEls.forEach((s, j) => {
-      const on = i === j;
-      s.el.classList.toggle('is-open', on);
-      s.header.setAttribute('aria-expanded', on ? 'true' : 'false');
-      s.body.hidden = !on;
+  function open(id, collapse = false) {
+    groups.forEach((g) => {
+      const on = g.id === id && !collapse;
+      g.el.classList.toggle('is-open', on);
+      g.head.setAttribute('aria-expanded', on ? 'true' : 'false');
+      g.body.hidden = !on;
     });
     try {
-      localStorage.setItem('ck.step', steps[i].id);
-    } catch {}
+      localStorage.setItem(STORAGE_KEY, collapse ? '' : id);
+    } catch {
+      /* storage unavailable */
+    }
   }
 
-  const undoBtn = h('button', { type: 'button', class: 'ck-ghost-btn', onClick: () => undo(), title: 'Undo (Ctrl+Z)' }, 'Undo');
-  const redoBtn = h('button', { type: 'button', class: 'ck-ghost-btn', onClick: () => redo(), title: 'Redo (Ctrl+Shift+Z)' }, 'Redo');
-  const resetBtn = h('button', { type: 'button', class: 'ck-ghost-btn ck-ghost-danger', onClick: () => reset(), title: 'Start over with the default clicker' }, 'Start over');
-  const footer = h('div', { class: 'ck-sidebar-foot' }, h('div', { class: 'ck-bar-group' }, undoBtn, redoBtn), resetBtn);
+  let initial = 'footprint';
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved === '' || groups.some((g) => g.id === saved)) initial = saved;
+  } catch {
+    /* storage unavailable */
+  }
+  if (initial) open(initial);
 
-  container.append(list, footer);
+  return { open, sync: (s, meta) => syncers.forEach((fn) => fn(s, meta)) };
+}
 
-  function sync() {
-    for (const fn of syncers) fn(state);
-    undoBtn.disabled = !canUndo();
-    redoBtn.disabled = !canRedo();
+// ------------------------------------------------------------------ foot pins
+function wireFoot(rail) {
+  const undoBtn = rail.querySelector('#ck-undo');
+  const redoBtn = rail.querySelector('#ck-redo');
+  const resetBtn = rail.querySelector('#ck-reset');
+  undoBtn.addEventListener('click', () => undo());
+  redoBtn.addEventListener('click', () => redo());
+  resetBtn.addEventListener('click', () => reset());
+  return {
+    sync() {
+      undoBtn.disabled = !canUndo();
+      redoBtn.disabled = !canRedo();
+    },
+  };
+}
+
+// ------------------------------------------------------------------ the rail
+const CASCADE_REASONS = new Set(['load', 'reset', 'undo', 'redo', 'replace']);
+
+/**
+ * Wire the whole left column. Returns { setSpec(spec), openGroup(id) }.
+ */
+export function initRail(rail) {
+  const header = wireHeader(rail);
+  const groups = buildGroups(rail.querySelector('#ck-groups'));
+  const foot = wireFoot(rail);
+
+  function sync(s, meta) {
+    const m = { ...(meta || {}), cascade: !!meta && !meta.transient && CASCADE_REASONS.has(meta.reason) };
+    beginCascade();
+    header.sync(s, m);
+    groups.sync(s, m);
+    foot.sync();
   }
   subscribe(sync);
-  sync();
-
-  let initial = 0;
-  try {
-    const saved = localStorage.getItem('ck.step');
-    const idx = steps.findIndex((t) => t.id === saved);
-    if (idx >= 0) initial = idx;
-  } catch {}
-  open(initial);
+  sync(state, null);
 
   return {
-    open,
-    setPreview: (url) => sourceApi?.setPreview(url),
-  };
-}
-
-// ------------------------------------------------------------------ viewport toolbar (glass, top-centre)
-export function initViewerToolbar(container, { onExploded, onShowSwitch, onCutOpen, onFit }) {
-  const assembled = h('input', { type: 'radio', name: 'ck-view-mode', id: 'ck-view-assembled', value: 'assembled', checked: true });
-  const exploded = h('input', { type: 'radio', name: 'ck-view-mode', id: 'ck-view-exploded', value: 'exploded' });
-  const modeSeg = h(
-    'div',
-    { class: 'ck-seg ck-seg-glass', role: 'radiogroup', 'aria-label': 'View mode' },
-    h('label', { class: 'ck-seg-item', for: 'ck-view-assembled' }, assembled, h('span', {}, 'Assembled')),
-    h('label', { class: 'ck-seg-item', for: 'ck-view-exploded' }, exploded, h('span', {}, 'Exploded')),
-  );
-  [assembled, exploded].forEach((r) => r.addEventListener('change', () => onExploded(exploded.checked)));
-
-  const mkToggle = (label, title, cb) => {
-    const b = h('button', { type: 'button', class: 'ck-tool-btn', 'aria-pressed': 'false', title }, label);
-    b.addEventListener('click', () => {
-      const on = b.getAttribute('aria-pressed') !== 'true';
-      b.setAttribute('aria-pressed', on ? 'true' : 'false');
-      cb(on);
-    });
-    return b;
-  };
-  const sw = mkToggle('Show switch', 'Ghost in a reference MX-style switch (not exported)', onShowSwitch);
-  const cut = mkToggle('Cut open', 'Slice the housing and switch down the middle to peek inside', onCutOpen);
-  const fit = h('button', { type: 'button', class: 'ck-tool-btn ck-tool-icon', title: 'Re-centre the view', 'aria-label': 'Re-centre the view', onClick: () => onFit() });
-  fit.innerHTML =
-    '<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/><circle cx="10" cy="10" r="2.5"/></svg>';
-
-  const bar = h('div', { class: 'ck-glass ck-toolbar', role: 'toolbar', 'aria-label': 'Viewer options' }, modeSeg, h('span', { class: 'ck-tool-sep', 'aria-hidden': 'true' }), sw, cut, fit);
-  const hint = h('div', { class: 'ck-hint' }, 'Orbit by dragging · right-drag slides · wheel zooms');
-  const spinner = h('div', { class: 'ck-glass ck-spinner', role: 'status', hidden: true }, h('span', { class: 'ck-spinner-ring', 'aria-hidden': 'true' }), 'Shaping…');
-  container.append(bar, hint, spinner);
-  return {
-    setBusy(on) {
-      spinner.hidden = !on;
-    },
-  };
-}
-
-// ------------------------------------------------------------------ export dock (bottom-right) + warnings
-const ICONS = {
-  save: '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3v10M6 9l4 4 4-4"/><path d="M4 15v2h12v-2"/></svg>',
-  load: '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h3l2 2h5a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
-};
-
-export function initExportDock(container, warningsEl, handlers) {
-  const btn3mf = h('button', { type: 'button', class: 'btn btn-primary ck-dock-primary', onClick: () => handlers.download3mf() }, 'Download 3MF');
-  const btnStl = h('button', { type: 'button', class: 'ck-tool-btn', onClick: () => handlers.downloadStl(), title: 'Download every part as STL files in a zip' }, 'STL zip');
-  const btnSave = h('button', { type: 'button', class: 'ck-tool-btn ck-tool-icon', 'aria-label': 'Save project file', title: 'Save project (JSON)', onClick: () => handlers.saveProject() });
-  btnSave.innerHTML = ICONS.save;
-  const loadInput = h('input', { type: 'file', accept: '.json,application/json', id: 'ck-load-project', class: 'ck-file-input' });
-  loadInput.addEventListener('change', () => {
-    const f = loadInput.files?.[0];
-    if (f) handlers.loadProject(f);
-    loadInput.value = '';
-  });
-  const btnLoad = h('button', { type: 'button', class: 'ck-tool-btn ck-tool-icon', 'aria-label': 'Open project file', title: 'Open a saved project', onClick: () => loadInput.click() });
-  btnLoad.innerHTML = ICONS.load;
-
-  const dock = h('div', { class: 'ck-glass ck-dock', role: 'group', 'aria-label': 'Export' }, btn3mf, btnStl, h('span', { class: 'ck-tool-sep', 'aria-hidden': 'true' }), btnSave, btnLoad, loadInput);
-  const status = h('div', { class: 'ck-dock-status', role: 'status', 'aria-live': 'polite' });
-  container.append(dock, status);
-
-  return {
-    setBusy(on) {
-      [btn3mf, btnStl].forEach((b) => (b.disabled = !!on));
-    },
-    setStatus(text) {
-      status.textContent = text || '';
-      status.hidden = !text;
-    },
-    setWarnings(list) {
-      const items = (list || []).filter(Boolean);
-      warningsEl.hidden = items.length === 0;
-      warningsEl.replaceChildren(...items.map((w) => h('div', { class: 'ck-warning' }, h('span', { class: 'ck-warning-dot', 'aria-hidden': 'true' }), String(w))));
-    },
+    setSpec: (spec) => header.setSpec(spec),
+    openGroup: (id) => groups.open(id),
   };
 }

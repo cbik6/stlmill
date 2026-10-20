@@ -7,12 +7,14 @@
 //   makeDesignFromText / makeDesignFromSvg / makeDesignFromImage -> Promise<DesignSpec>
 //
 // Part  = { name: 'body'|'cap'|'design', geometry: THREE.BufferGeometry (mm, Z up), color: '#rrggbb' }
-//   body   : rests on z = 0, centred on XY (the keychain ring, when enabled, is unioned into it).
+//   body   : rests on z = 0 with a solid floor, centred on XY (keychain ring, when enabled, is unioned in).
+//            The switch drops in from the top: flange on the plate, lower housing in a closed cavity below.
 //   cap    : bottom face z = 0, top face z = cap.thickness, stem socket down to -stemHeight.
 //            The UI should place it at z = assembly.capZ (seated on the switch) in the body frame.
 //   design : only for cap.designMode === 'raised'; same frame as the cap (z = thickness .. thickness+designHeight).
 // bounds   = { x, y, z } mm extents of the body part.
-// assembly = { plateTopZ, pocketHeight, capZ, bodyHeight, engraveDepth, capBounds: {x,y,z} }
+// assembly = { plateTopZ, plateBottomZ, cavityBottomZ, floorThickness, cavityDepth, pocketHeight (= cavityDepth,
+//              kept for older consumers), capZ, bodyHeight, engraveDepth, capBounds: {x,y,z}, triangles }
 //
 // All heavy steps yield to the event loop so a UI spinner can animate; nothing runs in a worker.
 
@@ -30,10 +32,17 @@ export const DEFAULT_PARAMS = {
   base: { style: 'outline' /* 'outline'|'circle'|'square'|'hexagon' */, size: 35 /* longest side, mm */, margin: 2.5 /* padding between design and cap edge */, cornerRadius: 4 },
   cap: { thickness: 3, designHeight: 1.0, designMode: 'raised' /* 'raised'|'engraved' */ },
   // rimHeight 7.0: the MX upper housing stands 6.6 mm above the plate, so the cap's underside
-  // seats 0.4 mm below the rim and is guided by the body wall. height 16.5 leaves an 8 mm pocket
-  // (16.5 - 7.0 rim - 1.5 plate) for the 5 mm lower housing plus pins.
-  body: { height: 16.5, rimHeight: 7.0, wall: 2.5 },
-  switch: { cutout: 14, pocket: 15.6, plateThickness: 1.5, stemCrossWidth: 4.1, stemCrossThickness: 1.3, stemOuterDiameter: 5.5, stemHeight: 3.6 },
+  // seats 0.4 mm below the rim and is guided by the body wall. height 18.5 = 1.5 floor +
+  // 8.5 cavity (5.0 lower housing + 3.3 pins + play) + 1.5 plate + 7.0 rim.
+  body: { height: 18.5, rimHeight: 7.0, wall: 2.5 },
+  switch: {
+    cutout: 14 /* nominal plate cutout, no tolerance (clips grip it) */,
+    pocket: 15.6 /* switch FLANGE width above the plate; the cap recess must clear it */,
+    cavity: 14.8 /* closed cavity under the plate for the lower housing + sprung clips (+2*switchTolerance) */,
+    cavityDepth: 8.5 /* from the plate underside down; never breaks the 1.5 mm floor */,
+    plateThickness: 1.5,
+    stemCrossWidth: 4.1, stemCrossThickness: 1.3, stemOuterDiameter: 5.5, stemHeight: 3.6,
+  },
   keychain: { enabled: false, outerRadius: 4.5, innerRadius: 2.2, angle: 90 /* deg around the base; 90 = top (+Y) */ },
   fit: { clearance: 0.3 /* cap-to-recess gap per side */, switchTolerance: 0.15 /* added per side to the pocket */ },
   colors: { body: '#2b2b2b', cap: '#f5f5f5', design: '#f07a2a' },
@@ -110,7 +119,11 @@ export async function buildClicker(userParams = {}) {
     warnings: [...new Set(warnings)],
     assembly: {
       plateTopZ: heights.plateTopZ,
-      pocketHeight: heights.pocketHeight,
+      plateBottomZ: heights.plateBottomZ,
+      cavityBottomZ: heights.cavityBottomZ,
+      floorThickness: heights.cavityBottomZ,
+      cavityDepth: heights.cavityDepth,
+      pocketHeight: heights.cavityDepth,
       capZ: heights.capZ,
       bodyHeight: heights.height,
       engraveDepth,
