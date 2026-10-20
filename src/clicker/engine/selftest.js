@@ -285,9 +285,19 @@ async function validate3MF(result, label) {
   check(/<m:colorgroup id="2">/.test(xml), '3MF colorgroup id 2');
   check(objects.every((m) => /pid="2"/.test(m[0])), '3MF objects use the colorgroup (pid=2)');
   check(/<metadata name="Title">/.test(xml), '3MF has Title metadata');
-  const items = [...xml.matchAll(/<item objectid="\d+" transform="([^"]+)"/g)];
-  check(items.length === result.parts.length, '3MF build items');
-  check(items.every((m) => m[1] === '1 0 0 0 1 0 0 0 1 0 0 0'), '3MF item transforms are identity (layout baked into vertices)');
+  const hasDesign = result.parts.some((p) => p.name === 'design');
+  const topLevel = hasDesign ? 2 : result.parts.length; // cap + design are ONE composite object
+  const items = [...xml.matchAll(/<item objectid="(\d+)" transform="([^"]+)"/g)];
+  check(items.length === topLevel, `3MF build has ${topLevel} items (got ${items.length})`);
+  check(items.every((m) => m[2] === '1 0 0 0 1 0 0 0 1 0 0 0'), '3MF item transforms are identity (layout baked into vertices)');
+  if (hasDesign) {
+    const comp = xml.match(/<object id="6" name="cap" type="model"><components>(.*?)<\/components><\/object>/);
+    check(!!comp, '3MF has composite object 6 "cap"');
+    const comps = comp ? [...comp[1].matchAll(/<component objectid="(\d+)"\/>/g)].map((m) => m[1]) : [];
+    check(comps.join(',') === '4,5', `composite has components 4,5 (got ${comps.join(',')})`);
+    check(comps.length && !/<component [^>]*transform=/.test(comp[1]), 'components carry no transform');
+    check(items.map((m) => m[1]).join(',') === '3,6', `build items are objects 3 and 6 (got ${items.map((m) => m[1]).join(',')})`);
+  }
   // XML well-formedness of the model + slicer metadata
   const parseXml = (text) => {
     let bad = false;
@@ -301,10 +311,29 @@ async function validate3MF(result, label) {
     const doc = parseXml(txt);
     check(doc !== null && doc.documentElement && doc.documentElement.nodeName === 'config', `${f} parses as XML <config>`);
     const objCount = (txt.match(/<object id=/g) || []).length;
-    check(objCount === result.parts.length, `${f} has one <object> per part`);
+    check(objCount === topLevel, `${f} has one <object> per build object (${topLevel}, got ${objCount})`);
     for (const [part, ext] of [['body', 1], ['cap', 2], ['design', 3]]) {
       if (!result.parts.some((p) => p.name === part)) continue;
       check(new RegExp(`value="${part}"[\\s\\S]{0,120}key="extruder" value="${ext}"`).test(txt), `${f}: ${part} -> extruder ${ext}`);
+    }
+    if (hasDesign) {
+      const tri = Object.fromEntries(objects.map((m) => [m[2], (m[4].match(/<triangle /g) || []).length]));
+      if (f.includes('model_settings')) {
+        const obj6 = txt.match(/<object id="6">([\s\S]*?)<\/object>/);
+        check(!!obj6 && /key="name" value="cap"/.test(obj6[1]), 'model_settings: object 6 named cap');
+        check(!!obj6 && /<part id="4" subtype="normal_part">[\s\S]*?value="cap"[\s\S]*?key="extruder" value="2"/.test(obj6[1]), 'model_settings: part 4 = cap, extruder 2');
+        check(!!obj6 && /<part id="5" subtype="normal_part">[\s\S]*?value="design"[\s\S]*?key="extruder" value="3"/.test(obj6[1]), 'model_settings: part 5 = design, extruder 3');
+        check(!!obj6 && (obj6[1].match(/<part /g) || []).length === 2, 'model_settings: object 6 has exactly 2 parts');
+        check((txt.match(/<model_instance>/g) || []).length === 2 && /object_id" value="6"/.test(txt), 'model_settings: plate instances for 3 and 6');
+        check((txt.match(/<assemble_item /g) || []).length === 2 && /assemble_item object_id="6"/.test(txt), 'model_settings: assemble items for 3 and 6');
+      } else {
+        const obj6 = txt.match(/<object id="6" instances_count="1">([\s\S]*?)<\/object>/);
+        const vols = obj6 ? [...obj6[1].matchAll(/<volume firstid="(\d+)" lastid="(\d+)">[\s\S]*?key="name" value="(\w+)"[\s\S]*?key="extruder" value="(\d)"/g)].map((m) => m.slice(1)) : [];
+        check(vols.length === 2, `Slic3r: object 6 has 2 volumes (got ${vols.length})`);
+        const capT = tri.cap, desT = tri.design;
+        check(vols[0] && vols[0].join() === `0,${capT - 1},cap,2`, `Slic3r: volume 0 = cap 0..${capT - 1} extruder 2 (got ${vols[0]})`);
+        check(vols[1] && vols[1].join() === `${capT},${capT + desT - 1},design,3`, `Slic3r: volume 1 = design ${capT}..${capT + desT - 1} extruder 3 (got ${vols[1]})`);
+      }
     }
   }
   check(names.includes('Metadata/project_settings.config'), '3MF contains Metadata/project_settings.config');
@@ -342,6 +371,7 @@ async function validate3MF(result, label) {
   const stlNames = Object.keys(z2.files);
   check(stlNames.length === result.parts.length, 'STL zip has one file per part');
   check(stlNames.includes('clicker-body.stl') && stlNames.includes('clicker-cap.stl'), 'STL file names clicker-<part>.stl');
+  if (des) check(stlNames.includes(flipped ? 'clicker-cap-inlay.stl' : 'clicker-cap-raised.stl'), `STL design file named by relationship (${stlNames.join(', ')})`);
   for (const n of stlNames) {
     const buf = await z2.file(n).async('arraybuffer');
     const count = new DataView(buf).getUint32(80, true);

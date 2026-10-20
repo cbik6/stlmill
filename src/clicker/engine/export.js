@@ -183,19 +183,52 @@ function describeObjects(parts) {
   }));
 }
 
-/** Full 3dmodel.model XML as a string; also returns per-object stats (exported for tests). */
+/**
+ * Group mesh objects into the top-level objects placed in the build:
+ *   body            -> its own object (id 3)
+ *   cap + design    -> ONE composite object (id 6, name "cap") with two components, so slicers
+ *                      keep the inlay filler / relief registered inside the cap instead of
+ *                      auto-arranging it as a separate object
+ *   cap alone       -> plain mesh object (engraved / no design)
+ * Returns [{ id, name, parts: [meshObject...] }].
+ */
+function groupBuildObjects(objs) {
+  const cap = objs.find((o) => o.name === 'cap');
+  const design = objs.find((o) => o.name === 'design');
+  const groups = [];
+  for (const o of objs) {
+    if (o === design && cap) continue;
+    if (o === cap && design) groups.push({ id: COMPOSITE_ID, name: 'cap', parts: [cap, design], composite: true });
+    else groups.push({ id: o.id, name: o.name, parts: [o], composite: false });
+  }
+  return groups;
+}
+const COMPOSITE_ID = 6;
+
+/**
+ * Full 3dmodel.model XML as a string; also returns the mesh objects (with stats) and the
+ * top-level build objects (exported for tests).
+ */
 export function buildThreeMFModel(parts, { name = 'clicker' } = {}) {
   const objs = describeObjects(parts);
   const bases = objs.map((o) => `<base name="${xmlEscape(o.name)}" displaycolor="${o.color}FF"/>`);
   const colors = objs.map((o) => `<m:color color="${o.color}FF"/>`);
   const objects = [];
-  const items = [];
   for (const o of objs) {
     const mesh = meshXml(o.part.geometry);
     o.triangles = mesh.triangles;
     o.vertices = mesh.vertices;
     objects.push(`<object id="${o.id}" name="${xmlEscape(o.name)}" type="model" pid="2" pindex="${o.index}">${mesh.xml}</object>`);
-    items.push(`<item objectid="${o.id}" transform="${IDENTITY}" partnumber="${xmlEscape(o.name)}"/>`);
+  }
+  const groups = groupBuildObjects(objs);
+  const items = [];
+  for (const g of groups) {
+    if (g.composite) {
+      // components share the baked print frame, so no component transforms
+      const comps = g.parts.map((p) => `<component objectid="${p.id}"/>`).join('');
+      objects.push(`<object id="${g.id}" name="${xmlEscape(g.name)}" type="model"><components>${comps}</components></object>`);
+    }
+    items.push(`<item objectid="${g.id}" transform="${IDENTITY}" partnumber="${xmlEscape(g.name)}"/>`);
   }
   const xml =
     `<?xml version="1.0" encoding="UTF-8"?>\n` +
@@ -210,7 +243,10 @@ export function buildThreeMFModel(parts, { name = 'clicker' } = {}) {
     `</resources>` +
     `<build>${items.join('')}</build>` +
     `</model>`;
-  return { xml, objects: objs.map(({ part, ...rest }) => rest) };
+  const meshObjects = objs.map(({ part, ...rest }) => rest);
+  const byId = new Map(meshObjects.map((o) => [o.id, o]));
+  const buildObjects = groups.map((g) => ({ id: g.id, name: g.name, composite: g.composite, parts: g.parts.map((p) => byId.get(p.id)) }));
+  return { xml, objects: meshObjects, buildObjects };
 }
 
 /** Backwards-compatible: model XML only. */
@@ -218,38 +254,59 @@ export function buildThreeMFModelXml(parts, opts) {
   return buildThreeMFModel(parts, opts).xml;
 }
 
-/** PrusaSlicer per-object/volume metadata (extruder per part). Triangle ids are per-object, 0-based. */
-export function buildPrusaConfig(objects) {
-  const body = objects
-    .map(
-      (o) =>
-        `  <object id="${o.id}" instances_count="1">\n` +
-        `    <metadata type="object" key="name" value="${xmlEscape(o.name)}"/>\n` +
-        `    <metadata type="object" key="extruder" value="${o.extruder}"/>\n` +
-        `    <volume firstid="0" lastid="${Math.max(0, o.triangles - 1)}">\n` +
-        `      <metadata type="volume" key="name" value="${xmlEscape(o.name)}"/>\n` +
-        `      <metadata type="volume" key="extruder" value="${o.extruder}"/>\n` +
-        `    </volume>\n` +
-        `  </object>\n`,
-    )
+/**
+ * PrusaSlicer per-object/volume metadata (extruder per volume). One <object> per build object;
+ * a composite object's volumes span its components' triangles concatenated in component order
+ * (triangle ids are per-object, 0-based).
+ */
+export function buildPrusaConfig(buildObjects) {
+  const body = buildObjects
+    .map((g) => {
+      let first = 0;
+      const volumes = g.parts
+        .map((p) => {
+          const last = first + Math.max(1, p.triangles) - 1;
+          const v =
+            `    <volume firstid="${first}" lastid="${last}">\n` +
+            `      <metadata type="volume" key="name" value="${xmlEscape(p.name)}"/>\n` +
+            `      <metadata type="volume" key="extruder" value="${p.extruder}"/>\n` +
+            `    </volume>\n`;
+          first = last + 1;
+          return v;
+        })
+        .join('');
+      return (
+        `  <object id="${g.id}" instances_count="1">\n` +
+        `    <metadata type="object" key="name" value="${xmlEscape(g.name)}"/>\n` +
+        `    <metadata type="object" key="extruder" value="${g.parts[0].extruder}"/>\n` +
+        volumes +
+        `  </object>\n`
+      );
+    })
     .join('');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<config>\n${body}</config>\n`;
 }
 
-/** Bambu Studio / OrcaSlicer model settings (extruder per object/part, plate + assemble blocks). */
-export function buildBambuModelSettings(objects) {
+/** Bambu Studio / OrcaSlicer model settings: one <object> per build object with one <part> per mesh. */
+export function buildBambuModelSettings(buildObjects) {
+  const objects = buildObjects;
   const objs = objects
     .map(
-      (o) =>
-        `  <object id="${o.id}">\n` +
-        `    <metadata key="name" value="${xmlEscape(o.name)}"/>\n` +
-        `    <metadata key="extruder" value="${o.extruder}"/>\n` +
-        `    <part id="${o.id}" subtype="normal_part">\n` +
-        `      <metadata key="name" value="${xmlEscape(o.name)}"/>\n` +
-        `      <metadata key="extruder" value="${o.extruder}"/>\n` +
-        `      <metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>\n` +
-        `      <mesh_stat face_count="${o.triangles}" edges_fixed="0" degenerate_facets="0" facets_removed="0" facets_reversed="0" backwards_edges="0"/>\n` +
-        `    </part>\n` +
+      (g) =>
+        `  <object id="${g.id}">\n` +
+        `    <metadata key="name" value="${xmlEscape(g.name)}"/>\n` +
+        `    <metadata key="extruder" value="${g.parts[0].extruder}"/>\n` +
+        g.parts
+          .map(
+            (p) =>
+              `    <part id="${p.id}" subtype="normal_part">\n` +
+              `      <metadata key="name" value="${xmlEscape(p.name)}"/>\n` +
+              `      <metadata key="extruder" value="${p.extruder}"/>\n` +
+              `      <metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>\n` +
+              `      <mesh_stat face_count="${p.triangles}" edges_fixed="0" degenerate_facets="0" facets_removed="0" facets_reversed="0" backwards_edges="0"/>\n` +
+              `    </part>\n`,
+          )
+          .join('') +
         `  </object>\n`,
     )
     .join('');
@@ -311,13 +368,13 @@ const RELS =
  */
 export async function exportThreeMF(resultOrParts, { name = 'clicker' } = {}) {
   const { parts } = layoutForPrint(resultOrParts);
-  const { xml, objects } = buildThreeMFModel(parts, { name });
+  const { xml, objects, buildObjects } = buildThreeMFModel(parts, { name });
   const zip = new JSZip();
   zip.file('[Content_Types].xml', CONTENT_TYPES);
   zip.file('_rels/.rels', RELS);
   zip.file('3D/3dmodel.model', xml);
-  zip.file('Metadata/Slic3r_PE_model.config', buildPrusaConfig(objects));
-  zip.file('Metadata/model_settings.config', buildBambuModelSettings(objects));
+  zip.file('Metadata/Slic3r_PE_model.config', buildPrusaConfig(buildObjects));
+  zip.file('Metadata/model_settings.config', buildBambuModelSettings(buildObjects));
   zip.file('Metadata/project_settings.config', buildBambuProjectSettings(objects));
   const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', compressionOptions: { level: 6 } });
   return new Blob([bytes], { type: THREEMF_MIME });
@@ -355,11 +412,20 @@ export function geometryToStl(geometry, header = 'Clicker Forge binary STL') {
   return buffer;
 }
 
-/** Zip Blob with one binary STL per part in print orientation (clicker-body.stl, clicker-cap.stl, clicker-design.stl). */
+/**
+ * Zip Blob with one binary STL per part in print orientation. STL has no grouping, so the
+ * design part is named after its relationship to the cap:
+ *   clicker-body.stl, clicker-cap.stl, clicker-cap-inlay.stl (inlay filler) / clicker-cap-raised.stl (raised relief)
+ */
 export async function exportStlZip(resultOrParts, { name = 'clicker' } = {}) {
+  const src = Array.isArray(resultOrParts) ? resultOrParts : resultOrParts.parts;
   const { parts } = layoutForPrint(resultOrParts);
   const zip = new JSZip();
-  for (const p of parts) zip.file(`clicker-${p.name}.stl`, geometryToStl(p.geometry, `${name} ${p.name}`));
+  parts.forEach((p, i) => {
+    const print = (src[i] && src[i].print) || {};
+    const file = p.name === 'design' ? (print.flipX === false ? 'clicker-cap-raised.stl' : 'clicker-cap-inlay.stl') : `clicker-${p.name}.stl`;
+    zip.file(file, geometryToStl(p.geometry, `${name} ${p.name}`));
+  });
   const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', compressionOptions: { level: 6 } });
   return new Blob([bytes], { type: 'application/zip' });
 }
