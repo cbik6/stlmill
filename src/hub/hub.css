@@ -182,13 +182,13 @@ main {
     3px 6px 7px rgba(70, 25, 0, 0.4);
 }
 
+/* Teal is mid-value, so a dark face muddies: use a light face (raised white-ish
+   plastic), a single dark extrusion step and a tighter cast shadow. */
 .emb-teal {
-  color: var(--teal-emb);
+  color: #cdf3ee;
   text-shadow:
-    -1px -1px 0 var(--teal-emb-hi),
     1px 1px 0 #0a4f4a,
-    2px 2px 0 #073f3b,
-    3px 6px 7px rgba(0, 40, 36, 0.42);
+    2px 4px 4px rgba(0, 40, 36, 0.4);
 }
 
 .emb-ink {
