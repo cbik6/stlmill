@@ -108,23 +108,52 @@ export function finalize(geometry, name, warnings) {
 }
 
 /**
+ * Cap socket arithmetic (cap frame, z = 0 is the cap's underside plane).
+ * The socket is cut UP into the cap slab from the underside; at least 1.0 mm of cap must remain
+ * between the socket ceiling and the design pocket floor (or the top, for 'raised'). Only when the
+ * socket is deeper than that allows does the remainder hang below the cap as a boss.
+ * Returns { t, s, dPocket, sMax, bossBelow, openZ, ceilingZ }.
+ */
+export function resolveCapSocket(params, warnings = null) {
+  const { cap } = params;
+  const sw = params.switch;
+  const t = Math.max(1.2, cap.thickness);
+  const s = Math.max(0.5, sw.stemHeight); // socket depth
+  const pocketed = cap.designMode === 'engraved' || cap.designMode === 'inlay';
+  const dPocket = pocketed && cap.designHeight > 0 ? Math.min(cap.designHeight, t - 0.8) : 0;
+  const sMax = t - dPocket - 1.0; // deepest socket keeping 1.0 mm of cap above its ceiling
+  const bossBelow = Math.max(0, s - sMax);
+  if (bossBelow > 0 && warnings) {
+    warnings.push(`Cap is too thin for a ${s} mm socket${dPocket ? ` under a ${dPocket} mm design pocket` : ''}: a ${bossBelow.toFixed(1)} mm boss hangs below the cap (thicken the cap to ${(s + dPocket + 1).toFixed(1)} mm to avoid it).`);
+  }
+  return { t, s, dPocket, sMax, bossBelow, openZ: -bossBelow, ceilingZ: s - bossBelow };
+}
+
+/** Cavity depth: a number, or 'auto' derived from switch.pins ('keep' 8.5 / 'clipped' 5.5). */
+export function resolveCavityDepth(sw) {
+  if (typeof sw.cavityDepth === 'number' && Number.isFinite(sw.cavityDepth)) return Math.max(0, sw.cavityDepth);
+  return sw.pins === 'clipped' ? MX.LOWER_HOUSING_DEPTH + 0.5 : MX.LOWER_HOUSING_DEPTH + MX.PIN_LENGTH + 0.2;
+}
+
+/**
  * Resolve body heights. Returns
- *   { height, rim, plate, cavityDepth, floor, plateTopZ, plateBottomZ, cavityBottomZ, capZ }
- * The body is raised (with a warning) when floor + cavity + plate + rim do not fit, and the
- * cavity is clamped so it never breaks through the FLOOR_MIN floor.
+ *   { height, rim, plate, cavityDepth, floor, plateTopZ, plateBottomZ, cavityBottomZ, capZ, seat, bossBelow }
+ * body.height may be 'auto' (= floor + cavity + plate + rim); a numeric height is raised (with a
+ * warning) when that does not fit. The cavity never breaks through the FLOOR_MIN floor.
  */
 export function resolveHeights(params, warnings) {
-  const { body, cap } = params;
+  const { body } = params;
+  const cap = params.cap;
   const sw = params.switch;
   const rim = Math.max(0, body.rimHeight);
   const plate = Math.max(0.6, sw.plateThickness);
-  let cavityDepth = Math.max(0, sw.cavityDepth);
-  const needed = MX.LOWER_HOUSING_DEPTH + MX.PIN_LENGTH;
+  let cavityDepth = resolveCavityDepth(sw);
+  const needed = sw.pins === 'clipped' ? MX.LOWER_HOUSING_DEPTH : MX.LOWER_HOUSING_DEPTH + MX.PIN_LENGTH;
   if (cavityDepth < needed) {
-    warnings.push(`Switch cavity is only ${cavityDepth.toFixed(1)} mm deep; the MX lower housing + pins need ${needed.toFixed(1)} mm, so the switch will not seat fully.`);
+    warnings.push(`Switch cavity is only ${cavityDepth.toFixed(1)} mm deep; the MX lower housing${sw.pins === 'clipped' ? '' : ' + pins'} need ${needed.toFixed(1)} mm, so the switch will not seat fully.`);
   }
   const minH = FLOOR_MIN + cavityDepth + plate + rim;
-  let H = body.height;
+  let H = typeof body.height === 'number' && Number.isFinite(body.height) ? body.height : minH;
   if (H < minH - 1e-9) {
     warnings.push(`Body height ${H} mm is too short for a ${FLOOR_MIN} mm floor + ${cavityDepth} mm cavity + ${plate} mm plate + ${rim} mm rim; raised to ${minH.toFixed(1)} mm.`);
     H = minH;
@@ -137,16 +166,20 @@ export function resolveHeights(params, warnings) {
     warnings.push(`Switch cavity depth clamped to ${cavityDepth.toFixed(1)} mm to keep a ${FLOOR_MIN} mm floor.`);
   }
   const cavityBottomZ = plateBottomZ - cavityDepth;
-  // Seated cap: the stem boss (socket depth = stemHeight) rests on the upper housing top, so the
-  // cap's underside slab sits at plateTop + 6.6 + stemHeight (0.4 mm stem play with a 4.0 socket).
-  const seat = MX.UPPER_HOUSING + Math.max(0.5, sw.stemHeight);
-  const capZ = plateTopZ + seat; // z of the cap's bottom face (cap frame origin) in the body frame
+  // Seated cap (cap frame origin = underside plane): the socket, cut up into the slab, bottoms
+  // out on the stem tip (stem top at plateTop + 6.6 + 3.6), unless a boss hangs below the slab
+  // and rests on the housing top first. With defaults (3.4 socket, no boss) the underside sits
+  // 0.2 mm above the housing.
+  const sock = resolveCapSocket(params);
+  const seat = Math.max(MX.UPPER_HOUSING + sock.bossBelow, MX.UPPER_HOUSING + MX.STEM_HEIGHT - sock.s);
+  const capZ = plateTopZ + seat; // z of the cap's underside plane in the body frame
+  const capTop = capZ + sock.t;
   if (capZ > H + 0.05) {
-    warnings.push(`Cap sits ${(capZ - H).toFixed(1)} mm above the body rim (switch housing + stem boss are taller than the recess). Set rimHeight to at least ${seat.toFixed(1)} mm to seat the cap inside the rim.`);
-  } else if (capZ + cap.thickness < H - 0.05) {
-    warnings.push(`Cap top ends up ${(H - capZ - cap.thickness).toFixed(1)} mm below the body rim and cannot be pressed comfortably; reduce rimHeight below ${(seat + cap.thickness).toFixed(1)} mm or thicken the cap.`);
+    warnings.push(`Cap underside sits ${(capZ - H).toFixed(1)} mm above the body rim. Set rimHeight to at least ${seat.toFixed(1)} mm to seat the cap inside the rim.`);
+  } else if (capTop < H - 0.05) {
+    warnings.push(`Cap top ends up ${(H - capTop).toFixed(1)} mm below the body rim and cannot be pressed comfortably; reduce rimHeight below ${(seat + sock.t).toFixed(1)} mm or thicken the cap.`);
   }
-  return { height: H, rim, plate, cavityDepth, floor: cavityBottomZ, plateTopZ, plateBottomZ, cavityBottomZ, capZ };
+  return { height: H, rim, plate, cavityDepth, floor: cavityBottomZ, plateTopZ, plateBottomZ, cavityBottomZ, capZ, seat, bossBelow: sock.bossBelow, socketCeilingZ: sock.ceilingZ };
 }
 
 /**
@@ -337,21 +370,24 @@ export function stemShape(params) {
 export function buildCapParts(layout, params, warnings) {
   const { cap } = params;
   const sw = params.switch;
-  const t = Math.max(1.2, cap.thickness);
+  const sock = resolveCapSocket(params, warnings);
+  const t = sock.t;
   if (t !== cap.thickness) warnings.push(`Cap thickness raised to ${t} mm (minimum).`);
 
-  const s = Math.max(0.5, sw.stemHeight); // socket depth
+  const s = sock.s; // socket depth
   const P = cleanPolygon(layout.capPoints);
   const socket = socketPolygons(sw);
-  // keep at least a 1 mm boss wall around the socket opening
+  // Boss (only when the socket does not fit in the slab): keep a 1 mm wall around the opening
   let bossD = sw.stemOuterDiameter;
   const minBoss = socket.extent + 2.0;
-  if (bossD < minBoss) {
+  if (sock.bossBelow > 0 && bossD < minBoss) {
     bossD = minBoss;
     warnings.push(`Stem boss widened to ${bossD.toFixed(1)} mm to keep a 1 mm wall around the ${socket.mode} socket.`);
   }
   const S = cleanPolygon(circlePoints(bossD / 2, 48));
-  const stemFits = polygonContains(P, S, 0.05) && polygonContains(S, socket.opening, 0.05);
+  const stemFits = sock.bossBelow > 0
+    ? polygonContains(P, S, 0.05) && polygonContains(S, socket.opening, 0.05)
+    : polygonContains(P, socket.opening, 1.0);
 
   // design polygons (cleaned once; shared by faces and walls)
   const designPolys = layout.designShapes.map((sh) => {
@@ -365,19 +401,24 @@ export function buildCapParts(layout, params, warnings) {
   let engraveDepth = 0;
   const wantEngrave = layout.designShapes.length > 0 && cap.designHeight > 0 && mode !== 'raised';
   if (wantEngrave) {
-    engraveDepth = Math.min(cap.designHeight, t - 0.8);
+    engraveDepth = sock.dPocket;
     if (engraveDepth < cap.designHeight) warnings.push(`Engraving depth clamped to ${engraveDepth.toFixed(2)} mm to keep 0.8 mm of cap under it.`);
   }
   const engraveInShell = wantEngrave && engraveDepth > 0.05 && designInsideCap;
 
   let capGeom;
   if (stemFits) {
-    // CSG-free closed shell: cap slab + stem socket (+ engraving when the design is inside the cap)
+    // CSG-free closed shell: cap slab with the socket cut up from the underside (boss only when
+    // the slab is too thin), plus the engraving when the design is inside the cap
     const b = new ShellBuilder();
     b.wall(P, 0, t, false); // cap side wall
-    b.face(P, [S], 0, false); // cap underside around the stem boss
-    b.wall(S, -s, 0, false); // boss outer wall
-    addSocket(b, S, -s, 0, socket); // boss bottom ring, socket walls (lofted when tapered), ceiling at z = 0
+    if (sock.bossBelow > 0) {
+      b.face(P, [S], 0, false); // cap underside around the boss
+      b.wall(S, sock.openZ, 0, false); // boss outer wall
+      addSocket(b, S, sock.openZ, sock.ceilingZ, socket); // boss bottom ring, socket walls, ceiling
+    } else {
+      addSocket(b, P, 0, sock.ceilingZ, socket); // underside ring, socket walls (lofted when tapered), ceiling at z = stemHeight
+    }
     if (engraveInShell) {
       const zf = t - engraveDepth;
       b.face(P, designPolys.map((d) => d.outer), t, true); // top surface minus the design
@@ -394,11 +435,13 @@ export function buildCapParts(layout, params, warnings) {
     }
     capGeom = b.build();
   } else {
-    warnings.push('Cap outline is too small for the stem; fell back to boolean construction (straight socket at the opening size).');
+    warnings.push('Cap outline is too small for the socket; fell back to boolean construction (straight socket at the opening size).');
     capGeom = extrude(layout.capShape, t, 0);
-    const cylinder = extrude(pointsToShape(circlePoints(bossD / 2, 48)), s + 0.5, -s);
-    capGeom = csg(capGeom, cylinder, ADDITION);
-    capGeom = csg(capGeom, extrude(pointsToShape(socket.opening), s + 1, -s - 1), SUBTRACTION);
+    if (sock.bossBelow > 0) {
+      const cylinder = extrude(pointsToShape(circlePoints(bossD / 2, 48)), sock.bossBelow + 0.5, sock.openZ);
+      capGeom = csg(capGeom, cylinder, ADDITION);
+    }
+    capGeom = csg(capGeom, extrude(pointsToShape(socket.opening), s + 1, sock.openZ - 1), SUBTRACTION);
   }
   if (wantEngrave && engraveDepth > 0.05 && !engraveInShell) {
     // design crosses the cap edge (presets) -> boolean subtraction, repaired afterwards
@@ -568,7 +611,8 @@ export function buildReferenceSwitchGeometry(params) {
   const parts = [];
   const housingBottom = plateBottom - MX.LOWER_HOUSING_DEPTH;
   parts.push(box(MX.LOWER_HOUSING, MX.LOWER_HOUSING, housingBottom, plateTop + 0.01));
-  for (const [px, py] of MX.PINS) {
+  // pins are drawn only when switch.pins === 'keep' (default 'clipped': pins snipped flush)
+  for (const [px, py] of sw.pins === 'keep' ? MX.PINS : []) {
     // pin bottom exactly at housingBottom - PIN_LENGTH; the extra 0.01 overlaps into the housing
     const pin = new THREE.CylinderGeometry(MX.PIN_DIAMETER / 2, MX.PIN_DIAMETER / 2, MX.PIN_LENGTH + 0.01, 12, 1);
     pin.rotateX(Math.PI / 2);

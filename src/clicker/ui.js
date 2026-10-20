@@ -179,8 +179,19 @@ export const GROUPS = [
       // The switch drops in from the top: it clips into the plate cutout, its flange rests on
       // the plate, and the lower housing + pins sit in a closed cavity beneath. The floor stays solid.
       { type: 'range', path: 'switch.cutout', label: 'Plate cutout', unit: 'mm', min: 13.8, max: 14.4, step: 0.1 },
+      // Most people snap the switch pins off, so the cavity fits the housing alone by default;
+      // keeping the pins deepens it by ~3 mm.
+      {
+        type: 'segmented',
+        path: 'switch.pins',
+        label: 'Switch pins',
+        options: [
+          ['clipped', 'Clipped'],
+          ['keep', 'Keep'],
+        ],
+      },
       { type: 'range', path: 'switch.cavity', label: 'Cavity width', unit: 'mm', min: 14, max: 15.6, step: 0.1 },
-      { type: 'range', path: 'switch.cavityDepth', label: 'Cavity depth', unit: 'mm', min: 5.5, max: 12, step: 0.1 },
+      { type: 'range', path: 'switch.cavityDepth', label: 'Cavity depth', unit: 'mm', min: 5, max: 12, step: 0.1 },
       { type: 'range', path: 'switch.pocket', label: 'Flange width', unit: 'mm', min: 15, max: 17, step: 0.1 },
       { type: 'range', path: 'switch.plateThickness', label: 'Plate', unit: 'mm', min: 1.2, max: 2, step: 0.1 },
       { type: 'range', path: 'fit.switchTolerance', label: 'Switch tolerance', unit: 'mm', min: 0, max: 0.4, step: 0.05 },
@@ -200,7 +211,7 @@ export const GROUPS = [
       { type: 'range', path: 'switch.roundDiameter', label: 'Hole diameter', unit: 'mm', min: 4.6, max: 5.8, step: 0.1, when: (p) => p.switch.socketMode === 'round' },
       { type: 'range', path: 'switch.stemHeight', label: 'Socket depth', unit: 'mm', min: 3, max: 5, step: 0.1 },
       { type: 'range', path: 'fit.clearance', label: 'Cap clearance', unit: 'mm', min: 0.1, max: 0.6, step: 0.05 },
-      { type: 'range', path: 'cap.thickness', label: 'Cap thickness', unit: 'mm', min: 2, max: 5, step: 0.1 },
+      { type: 'range', path: 'cap.thickness', label: 'Cap thickness', unit: 'mm', min: 2, max: 8, step: 0.1 },
       { type: 'range', path: 'cap.designHeight', label: 'Design height', unit: 'mm', min: 0.4, max: 2, step: 0.1 },
       {
         type: 'segmented',

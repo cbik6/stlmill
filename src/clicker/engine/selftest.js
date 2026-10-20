@@ -361,7 +361,7 @@ async function validate3MF(result, label) {
         check(near(bodyBox.minZ, 0) && near((bodyBox.minX + bodyBox.maxX) / 2, 0, 0.05) && near((bodyBox.minY + bodyBox.maxY) / 2, 0, 0.05), 'assemble: body at origin, floor on z = 0');
         const capId = hasDesign ? '6' : '4';
         const capBox = expect('cap', tfs.get(capId), capZ, 'cap');
-        check(near(capBox.maxZ, capZ + DEFAULT_PARAMS.cap.thickness) && near(capBox.minZ, capZ - DEFAULT_PARAMS.switch.stemHeight), 'assemble: cap bottom face at capZ, top at capZ + thickness');
+        check(near(capBox.maxZ, capZ + result.assembly.capThickness) && near(capBox.minZ, capZ - result.assembly.bossBelow), 'assemble: cap underside at capZ (minus any boss), top at capZ + thickness');
         check(near((capBox.minX + capBox.maxX) / 2, 0, 0.05) && near((capBox.minY + capBox.maxY) / 2, 0, 0.05), 'assemble: cap centred over the body');
         if (hasDesign) {
           const dBox = expect('design', tfs.get('6'), capZ, 'design (same transform as the cap)');
@@ -405,7 +405,7 @@ async function validate3MF(result, label) {
   const noOverlap = bb(body).max.x < bb(cap).min.x || bb(cap).max.x < bb(body).min.x || bb(body).max.y < bb(cap).min.y || bb(cap).max.y < bb(body).min.y;
   check(noOverlap, 'layout: body and cap do not overlap in XY');
   check(bb(body).max.x < 0 && bb(cap).min.x > 0, 'layout: body left of origin, cap right of origin');
-  if (flipped) check(Math.abs(bb(cap).max.z - (DEFAULT_PARAMS.cap.thickness + DEFAULT_PARAMS.switch.stemHeight)) < 1e-6, 'layout: flipped cap has the stem up');
+  if (flipped) check(Math.abs(bb(cap).max.z - (result.assembly.capThickness + result.assembly.bossBelow)) < 1e-6, `layout: flipped cap rests on its top, socket opening up (max z ${bb(cap).max.z.toFixed(2)})`);
   for (const p of laid) check(openEdgeCount(p.geometry) === 0, `layout: ${p.name} still watertight`);
   console.log(`  layout: body x[${bb(body).min.x.toFixed(1)}, ${bb(body).max.x.toFixed(1)}]  cap x[${bb(cap).min.x.toFixed(1)}, ${bb(cap).max.x.toFixed(1)}] z[0, ${bb(cap).max.z.toFixed(2)}]${des ? `  design z[${bb(des).min.z.toFixed(2)}, ${bb(des).max.z.toFixed(2)}]` : ''}`);
 
@@ -434,12 +434,30 @@ check(DEFAULT_PARAMS.cap.designMode === 'inlay', 'default designMode is inlay');
 const base = report('outline / inlay (synthetic, defaults)', await buildClicker({ design: { spec } }));
 check(base.parts.map((p) => p.name).join(',') === 'body,cap,design', 'parts are body,cap,design');
 check(Math.abs(base.bounds.x - 35) < 0.3, `body long side ~35 mm (got ${base.bounds.x.toFixed(2)})`);
-check(Math.abs(base.bounds.z - DEFAULT_PARAMS.body.height) < 1e-6, 'body height');
-check(base.parts[1].geometry.boundingBox.min.z < -3.5, 'cap stem hangs below z=0');
-check(Math.abs(base.parts[1].geometry.boundingBox.max.z - 3) < 1e-6, 'cap top at z=thickness');
-check(Math.abs(base.parts[2].geometry.boundingBox.min.z - 2) < 1e-6 && Math.abs(base.parts[2].geometry.boundingBox.max.z - 3) < 1e-6, 'inlay filler spans thickness-designHeight .. thickness');
-check(base.assembly.engraveDepth === 1, 'inlay pocket depth = designHeight');
-check(base.warnings.length === 0, 'no warnings with defaults');
+check(DEFAULT_PARAMS.body.height === 'auto' && Math.abs(base.bounds.z - 15.7) < 1e-6, `body height auto -> 15.7 (got ${base.bounds.z})`);
+check(base.parts[1].geometry.boundingBox.min.z === 0, `cap has no boss: nothing below z = 0 (min z ${base.parts[1].geometry.boundingBox.min.z})`);
+check(Math.abs(base.parts[1].geometry.boundingBox.max.z - 5.2) < 1e-6, 'cap top at z = thickness 5.2');
+check(Math.abs(base.parts[2].geometry.boundingBox.min.z - 4.4) < 1e-6 && Math.abs(base.parts[2].geometry.boundingBox.max.z - 5.2) < 1e-6, 'inlay filler spans thickness-designHeight .. thickness (4.4..5.2)');
+check(base.assembly.engraveDepth === 0.8, 'inlay pocket depth = designHeight 0.8');
+check(base.assembly.bossBelow === 0 && Math.abs(base.assembly.socketCeilingZ - 3.4) < 1e-9, 'socket cut into the slab: ceiling at z = 3.4, no boss');
+check(base.assembly.socketCeilingZ <= base.assembly.capThickness - base.assembly.engraveDepth - 1.0 + 1e-9, 'inlay floor keeps >= 1.0 mm of cap above the socket ceiling');
+{
+  const capG = base.parts[1].geometry;
+  const pos = capG.attributes.position.array;
+  const index = capG.index.array;
+  const zs = [];
+  for (let i = 0; i + 2 < index.length; i += 3) {
+    const a = index[i] * 3, b = index[i + 1] * 3, c = index[i + 2] * 3;
+    const d1 = pos[a] * pos[b + 1] - pos[a + 1] * pos[b], d2 = pos[b] * pos[c + 1] - pos[b + 1] * pos[c], d3 = pos[c] * pos[a + 1] - pos[c + 1] * pos[a];
+    if ((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0)) continue;
+    const area = d1 + d2 + d3;
+    if (Math.abs(area) < 1e-12) continue;
+    zs.push((pos[a + 2] * d2 + pos[b + 2] * d3 + pos[c + 2] * d1) / area);
+  }
+  const uniq = zs.sort((p, q) => p - q).filter((z, i) => i === 0 || Math.abs(z - zs[i - 1]) > 1e-6);
+  check(uniq.length === 2 && Math.abs(uniq[0] - 3.4) < 1e-6 && Math.abs(uniq[1] - 4.4) < 1e-6, `axis ray from the cap underside hits the socket ceiling at 3.4 then the inlay floor at 4.4 (got ${uniq.map((z) => z.toFixed(2)).join(', ')})`);
+}
+check(base.warnings.length === 0, `no warnings with defaults (${base.warnings.join(' | ')})`);
 check(base.parts[1].print && base.parts[1].print.flipX === true, 'inlay cap prints flipped');
 // raised: relief on top, supports warning
 const raised = report('outline / raised (synthetic)', await buildClicker({ design: { spec }, cap: { designMode: 'raised' } }));
@@ -457,11 +475,19 @@ check(raised.parts[1].print.flipX === false, 'raised cap prints cap-up');
 }
 const asm = base.assembly;
 check(Math.abs(asm.floorThickness - 1.5) < 1e-6, `floor thickness 1.5 (got ${asm.floorThickness})`);
-check(Math.abs(asm.cavityDepth - 8.5) < 1e-6, 'cavity depth 8.5');
-check(Math.abs(asm.plateTopZ - (DEFAULT_PARAMS.body.height - DEFAULT_PARAMS.body.rimHeight)) < 1e-6, 'plate top z');
-check(Math.abs(asm.capZ - (asm.plateTopZ + 6.6 + DEFAULT_PARAMS.switch.stemHeight)) < 1e-6, 'capZ = plateTopZ + 6.6 + stemHeight (boss bottom on the housing top)');
-check(Math.abs(asm.capZ - (DEFAULT_PARAMS.body.height - 0.4)) < 1e-6, `cap underside seats 0.4 mm below the rim (capZ ${asm.capZ}, height ${DEFAULT_PARAMS.body.height})`);
-check(DEFAULT_PARAMS.body.rimHeight === 11.0 && DEFAULT_PARAMS.body.height === 22.5, 'defaults: rimHeight 11.0, height 22.5');
+check(DEFAULT_PARAMS.switch.pins === 'clipped' && DEFAULT_PARAMS.switch.cavityDepth === 'auto' && Math.abs(asm.cavityDepth - 5.5) < 1e-6, `pins clipped -> cavity depth 5.5 (got ${asm.cavityDepth})`);
+check(Math.abs(asm.plateTopZ - (asm.bodyHeight - DEFAULT_PARAMS.body.rimHeight)) < 1e-6, 'plate top z = height - rim');
+check(Math.abs(asm.seat - (6.6 + 3.6 - DEFAULT_PARAMS.switch.stemHeight)) < 1e-9 && Math.abs(asm.seat - 6.8) < 1e-9, `seat = stem top 10.2 - socket 3.4 = 6.8 (got ${asm.seat})`);
+check(Math.abs(asm.capZ - (asm.plateTopZ + asm.seat)) < 1e-6, 'capZ = plateTopZ + seat');
+check(Math.abs(asm.capZ - (asm.bodyHeight - 0.4)) < 1e-6, `cap underside seats 0.4 mm below the rim (capZ ${asm.capZ}, height ${asm.bodyHeight})`);
+check(DEFAULT_PARAMS.body.rimHeight === 7.2 && DEFAULT_PARAMS.cap.thickness === 5.2 && DEFAULT_PARAMS.cap.designHeight === 0.8 && DEFAULT_PARAMS.switch.stemHeight === 3.4, 'defaults: rim 7.2, cap 5.2 / 0.8, socket 3.4');
+check(Math.abs(asm.bodyHeight - 15.7) < 1e-6 && Math.abs(base.bounds.x - 35) < 0.1 && Math.abs(base.bounds.y - 21.4) < 0.1, `default bounds ~35 x 21.4 x 15.7 (got ${base.bounds.x.toFixed(2)} x ${base.bounds.y.toFixed(2)} x ${base.bounds.z.toFixed(2)})`);
+// pins kept: deeper cavity, taller body, same seat
+const keep = report('pins kept (cavity 8.5)', await buildClicker({ design: { spec }, switch: { pins: 'keep' } }), { quiet: true });
+check(Math.abs(keep.assembly.cavityDepth - 8.5) < 1e-6 && Math.abs(keep.assembly.bodyHeight - 18.7) < 1e-6 && Math.abs(keep.assembly.floorThickness - 1.5) < 1e-6, `pins keep -> cavity 8.5, height 18.7 (got ${keep.assembly.cavityDepth}, ${keep.assembly.bodyHeight})`);
+check(Math.abs(keep.assembly.capZ - (keep.assembly.bodyHeight - 0.4)) < 1e-6 && keep.warnings.length === 0, 'pins keep: cap still 0.4 below the rim, no warnings');
+const fixedH = await buildClicker({ design: { spec }, body: { height: 20 } });
+check(Math.abs(fixedH.assembly.bodyHeight - 20) < 1e-6 && Math.abs(fixedH.assembly.floorThickness - (20 - 7.2 - 1.5 - 5.5)) < 1e-6, 'numeric body.height is honoured (extra goes into the floor)');
 {
   const pos = base.parts[0].geometry.attributes.position.array;
   const half = (DEFAULT_PARAMS.switch.cavity + 2 * DEFAULT_PARAMS.fit.switchTolerance) / 2;
@@ -482,7 +508,7 @@ const engraved = report('outline / engraved / keychain (traced synthetic)',
   await buildClicker({ design: { spec: traced }, cap: { designMode: 'engraved' }, keychain: { enabled: true, angle: 45 } }));
 check(engraved.parts.length === 2, 'engraved has no separate design part');
 check(engraved.bounds.y > base.bounds.y + 3, 'keychain ring extends bounds');
-check(engraved.parts[1].geometry.boundingBox.max.z === 3, 'engraved cap keeps its top at thickness');
+check(Math.abs(engraved.parts[1].geometry.boundingBox.max.z - DEFAULT_PARAMS.cap.thickness) < 1e-6, 'engraved cap keeps its top at thickness');
 check(hitFromBelow(engraved.parts[1].geometry, 0.01, 0.01) === -3.6 || true, 'cap stem present');
 
 // 3. presets
@@ -526,7 +552,7 @@ const short = report('short body (height 6, rim 2)', await buildClicker({ design
 check(short.warnings.some((w) => /too short/.test(w)), 'short body warning');
 const shallow = report('shallow cavity (4 mm)', await buildClicker({ design: { spec }, switch: { cavityDepth: 4 } }));
 check(shallow.warnings.some((w) => /cavity is only/.test(w)), 'shallow cavity warning');
-check(Math.abs(shallow.assembly.floorThickness - (DEFAULT_PARAMS.body.height - DEFAULT_PARAMS.body.rimHeight - 1.5 - 4)) < 1e-6, 'shallow cavity leaves a thicker floor');
+check(Math.abs(shallow.assembly.cavityDepth - 4) < 1e-6 && Math.abs(shallow.assembly.floorThickness - 1.5) < 1e-6 && Math.abs(shallow.assembly.bodyHeight - (1.5 + 4 + 1.5 + 7.2)) < 1e-6, `numeric cavityDepth 4 honoured; auto height follows (${shallow.assembly.bodyHeight})`);
 const tiny = report('tiny circle (size 22)', await buildClicker({ design: { spec }, base: { style: 'circle', size: 22 } }));
 check(tiny.warnings.some((w) => /too small/.test(w)), 'tiny base warning');
 
@@ -558,31 +584,36 @@ const halfExtentAt = (geometry, z, axis = 0) => {
 };
 console.log('\n== stem socket variants');
 const depth = DEFAULT_PARAMS.switch.stemHeight;
-check(depth === 4.0 && DEFAULT_PARAMS.switch.socketMode === 'tapered' && DEFAULT_PARAMS.switch.socketOpening === 4.6 && DEFAULT_PARAMS.switch.roundDiameter === 5.0, 'socket defaults: tapered 4.6 -> 4.1, 4.0 deep, round 5.0');
+const capT = DEFAULT_PARAMS.cap.thickness;
+check(depth === 3.4 && DEFAULT_PARAMS.switch.socketMode === 'tapered' && DEFAULT_PARAMS.switch.socketOpening === 4.6 && DEFAULT_PARAMS.switch.roundDiameter === 5.0, 'socket defaults: tapered 4.6 -> 4.1, 3.4 deep, round 5.0');
 for (const [mode, extra, openHalf, ceilHalf] of [
   ['cross', {}, 2.05, 2.05],
   ['tapered', {}, 2.3, 2.05],
   ['round', {}, 2.5, 2.5],
 ]) {
-  // raised mode -> plain cap top, so the axis ray sees exactly the socket ceiling (z = 0) and the top (z = 3)
+  // raised mode -> plain cap top, so the axis ray sees exactly the socket ceiling (z = depth) and the top (z = thickness)
   const r = report(`cap socket: ${mode}`, await buildClicker({ design: { spec }, cap: { designMode: 'raised' }, switch: { socketMode: mode, ...extra } }), { quiet: true });
   const capG = r.parts[1].geometry;
   const hits = hitsAlongAxis(capG, 0.0, 0.0);
-  check(Math.abs(capG.boundingBox.min.z + depth) < 1e-6, `${mode}: socket opening at z = -${depth}`);
-  check(hits.length === 2 && Math.abs(hits[0]) < 1e-6 && Math.abs(hits[1] - 3) < 1e-6, `${mode}: axis ray hits the ceiling at z = 0 (depth ${depth}) and the cap top only (got ${hits.map((z) => z.toFixed(2)).join(', ')})`);
-  const open = halfExtentAt(capG, -depth, 0), ceil = halfExtentAt(capG, 0, 0);
-  // the boss ring also sits on those planes, so look at the socket polygon extents via the inner vertices
+  check(capG.boundingBox.min.z === 0, `${mode}: socket opens on the underside plane z = 0, no boss (min z ${capG.boundingBox.min.z})`);
+  check(hits.length === 2 && Math.abs(hits[0] - depth) < 1e-6 && Math.abs(hits[1] - capT) < 1e-6, `${mode}: axis ray hits the ceiling at z = ${depth} and the cap top at ${capT} only (got ${hits.map((z) => z.toFixed(2)).join(', ')})`);
+  // socket polygon extents via the inner vertices on the opening / ceiling planes
   const inner = (z) => { const pos = capG.attributes.position.array; let m = 0; for (let i = 0; i < pos.length; i += 3) if (Math.abs(pos[i + 2] - z) < 1e-4 && Math.hypot(pos[i], pos[i + 1]) < 2.74) m = Math.max(m, Math.abs(pos[i])); return m; };
-  check(Math.abs(inner(-depth) - openHalf) < 0.02, `${mode}: opening half-width ${openHalf} (got ${inner(-depth).toFixed(3)})`);
-  check(Math.abs(inner(0) - ceilHalf) < 0.02, `${mode}: ceiling half-width ${ceilHalf} (got ${inner(0).toFixed(3)})`);
+  check(Math.abs(inner(0) - openHalf) < 0.02, `${mode}: opening half-width ${openHalf} (got ${inner(0).toFixed(3)})`);
+  check(Math.abs(inner(depth) - ceilHalf) < 0.02, `${mode}: ceiling half-width ${ceilHalf} (got ${inner(depth).toFixed(3)})`);
   const unexpected = r.warnings.filter((w) => !/need supports/.test(w));
   check(unexpected.length === 0, `${mode}: no socket warnings (${unexpected.join(' | ')})`);
-  console.log(`  ${mode.padEnd(8)} cap ${r.assembly.triangles.cap} tris, axis hits [${hits.map((z) => z.toFixed(2)).join(', ')}], opening half ${inner(-depth).toFixed(2)}, ceiling half ${inner(0).toFixed(2)}, min z ${capG.boundingBox.min.z.toFixed(2)}`);
+  console.log(`  ${mode.padEnd(8)} cap ${r.assembly.triangles.cap} tris, axis hits [${hits.map((z) => z.toFixed(2)).join(', ')}], opening half ${inner(0).toFixed(2)}, ceiling half ${inner(depth).toFixed(2)}, min z ${capG.boundingBox.min.z.toFixed(2)}`);
 }
 {
-  const wide = await buildClicker({ design: { spec }, switch: { socketMode: 'round', roundDiameter: 6.0 } });
-  check(wide.warnings.some((w) => /boss widened/.test(w)), 'round 6.0: boss widened warning');
-  check(openEdgeCount(wide.parts[1].geometry) === 0, 'round 6.0: cap watertight');
+  // socket deeper than the slab allows (5.0 into a 5.2 cap with a 0.8 pocket -> 1.6 mm boss)
+  const deep = report('deep socket (boss)', await buildClicker({ design: { spec }, switch: { stemHeight: 5.0 } }), { quiet: true });
+  check(deep.warnings.some((w) => /boss hangs below/.test(w)), 'deep socket: boss warning');
+  check(Math.abs(deep.assembly.bossBelow - 1.6) < 1e-9 && Math.abs(deep.parts[1].geometry.boundingBox.min.z + 1.6) < 1e-6, `deep socket: 1.6 mm boss below the cap (min z ${deep.parts[1].geometry.boundingBox.min.z.toFixed(2)})`);
+  check(Math.abs(deep.assembly.seat - (6.6 + 1.6)) < 1e-9, 'deep socket: seat = housing top + boss');
+  check(Math.abs(deep.assembly.socketCeilingZ - 3.4) < 1e-9, 'deep socket: ceiling still 1.0 mm under the pocket floor');
+  const laid = layoutForPrint(deep).parts;
+  check(laid.every((p) => p.geometry.boundingBox.min.z === 0), 'deep socket: print layout still rests every part on z = 0');
 }
 
 console.log('\n== socket coupons');
@@ -642,13 +673,22 @@ console.log('\n== socket coupons');
 const { MX } = await import('./index.js');
 const sw = buildReferenceSwitch();
 sw.computeBoundingBox();
-const plateTop = DEFAULT_PARAMS.body.height - DEFAULT_PARAMS.body.rimHeight;
-console.log('\nreference switch tris', sw.index ? sw.index.count / 3 : sw.attributes.position.count / 3, 'z', sw.boundingBox.min.z.toFixed(2), '..', sw.boundingBox.max.z.toFixed(2));
+const plateTop = base.assembly.plateTopZ;
+const swTris = sw.index ? sw.index.count / 3 : sw.attributes.position.count / 3;
+console.log('\nreference switch (pins clipped) tris', swTris, 'z', sw.boundingBox.min.z.toFixed(2), '..', sw.boundingBox.max.z.toFixed(2));
 check(MX.STEM_HEIGHT === 3.6, 'MX stem height constant is 3.6 (independent of the socket depth)');
 check(Math.abs(sw.boundingBox.max.z - (plateTop + 6.6 + MX.STEM_HEIGHT)) < 1e-3, 'switch stem top z = plateTop + 6.6 + 3.6');
-check(Math.abs(sw.boundingBox.min.z - (plateTop - 1.5 - 5.0 - 3.3)) < 1e-3, 'switch pins bottom z = plateBottom - 8.3');
-check(sw.boundingBox.min.z > base.assembly.cavityBottomZ - 1e-6, 'switch pins stay above the cavity floor');
+check(Math.abs(sw.boundingBox.min.z - (plateTop - 1.5 - 5.0)) < 1e-3, `clipped: no pins, switch bottom = plateBottom - 5.0 (got ${sw.boundingBox.min.z.toFixed(2)})`);
+check(sw.boundingBox.min.z > base.assembly.cavityBottomZ - 1e-6, 'clipped: housing stays above the cavity floor');
 check(Math.abs(sw.boundingBox.max.x - 7.8) < 1e-3, 'switch flange is 15.6 wide');
+check(Math.abs(sw.boundingBox.max.z - MX.STEM_HEIGHT - (base.assembly.capZ - 0.2)) < 1e-3, 'housing top is 0.2 mm below the seated cap underside');
+const swKeep = buildReferenceSwitch({ switch: { pins: 'keep' } });
+swKeep.computeBoundingBox();
+const keepTris = swKeep.index ? swKeep.index.count / 3 : swKeep.attributes.position.count / 3;
+check(keepTris > swTris, 'keep: reference switch renders pins');
+const keepPlateTop = keep.assembly.plateTopZ;
+check(Math.abs(swKeep.boundingBox.min.z - (keepPlateTop - 1.5 - 5.0 - 3.3)) < 1e-3, `keep: pins bottom = plateBottom - 8.3 (got ${swKeep.boundingBox.min.z.toFixed(2)})`);
+check(swKeep.boundingBox.min.z > keep.assembly.cavityBottomZ - 1e-6, 'keep: pins stay above the cavity floor');
 
 console.log(`\n${failures === 0 ? 'SELFTEST PASSED' : `SELFTEST FAILED (${failures})`} in ${Date.now() - t0} ms`);
 process.exit(failures === 0 ? 0 : 1);

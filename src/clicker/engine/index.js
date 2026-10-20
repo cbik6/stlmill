@@ -9,9 +9,11 @@
 // Part  = { name: 'body'|'cap'|'design', geometry: THREE.BufferGeometry (mm, Z up), color: '#rrggbb' }
 //   body   : rests on z = 0 with a solid floor, centred on XY (keychain ring, when enabled, is unioned in).
 //            The switch drops in from the top: flange on the plate, lower housing in a closed cavity below.
-//   cap    : bottom face z = 0, top face z = cap.thickness, stem boss / socket down to -stemHeight.
-//            The UI should place it at z = assembly.capZ in the body frame: the seated position
-//            with the boss bottom on the switch's upper housing (capZ = plateTopZ + 6.6 + stemHeight).
+//   cap    : underside plane z = 0, top face z = cap.thickness; the stem socket is cut UP into the
+//            slab from the underside (ceiling at z = stemHeight). Nothing extends below z = 0 unless
+//            the slab is too thin for the socket, in which case a boss hangs to z = -assembly.bossBelow.
+//            The UI should place it at z = assembly.capZ in the body frame (seated on the switch:
+//            socket bottoming on the stem tip, or boss on the housing top).
 //   design : 'raised'  -> relief standing on the cap top (z = thickness .. thickness+designHeight)
 //            'inlay'   -> filler exactly filling a pocket in the cap top (z = thickness-designHeight .. thickness)
 //            'engraved'-> no design part (pocket only). Same frame as the cap in both cases.
@@ -48,17 +50,21 @@ export { MX } from './solids.js';
 export const DEFAULT_PARAMS = {
   design: { spec: null, fill: 100 /* % of the available area the design fills */, rotation: 0 /* deg CCW */ },
   base: { style: 'outline' /* 'outline'|'circle'|'square'|'hexagon' */, size: 35 /* longest side, mm */, margin: 2.5 /* padding between design and cap edge */, cornerRadius: 4 },
-  cap: { thickness: 3, designHeight: 1.0, designMode: 'inlay' /* 'inlay'|'raised'|'engraved' */ },
-  // rimHeight 11.0: the MX upper housing stands 6.6 mm above the plate and the cap's stem boss
-  // (socket depth 4.0) rests on it, so the cap's underside slab seats at 10.6 mm above the plate,
-  // 0.4 mm below the rim, guided by the body wall. height 22.5 = 1.5 floor + 8.5 cavity
-  // (5.0 lower housing + 3.3 pins + play) + 1.5 plate + 11.0 rim.
-  body: { height: 22.5, rimHeight: 11.0, wall: 2.5 },
+  // cap 5.2 thick: the 3.4 mm socket is cut up into the slab from the underside, the 0.8 mm
+  // inlay/engraving pocket comes down from the top, and >= 1.0 mm of cap stays between them.
+  cap: { thickness: 5.2, designHeight: 0.8, designMode: 'inlay' /* 'inlay'|'raised'|'engraved' */ },
+  // Seat: the socket bottoms out on the MX stem tip (plate top + 6.6 housing + 3.6 stem), so the
+  // cap underside sits at 10.2 - 3.4 = 6.8 mm above the plate (0.2 mm above the housing, no boss).
+  // rimHeight 7.2 = seat + 0.4 (cap underside 0.4 mm below the rim, guided by the wall).
+  // height 'auto' = 1.5 floor + cavity (5.5 'clipped' / 8.5 'keep') + 1.5 plate + 7.2 rim
+  //   -> 15.7 mm with the defaults (18.7 with pins kept). A number overrides (raised if too short).
+  body: { height: 'auto', rimHeight: 7.2, wall: 2.5 },
   switch: {
     cutout: 14 /* nominal plate cutout, no tolerance (clips grip it) */,
     pocket: 15.6 /* switch FLANGE width above the plate; the cap recess must clear it */,
     cavity: 14.8 /* closed cavity under the plate for the lower housing + sprung clips (+2*switchTolerance) */,
-    cavityDepth: 8.5 /* from the plate underside down; never breaks the 1.5 mm floor */,
+    pins: 'clipped' /* 'clipped' (pins snipped flush, default) | 'keep' (deeper cavity for the pins) */,
+    cavityDepth: 'auto' /* 'auto' = 5.5 ('clipped') / 8.5 ('keep') from the plate underside; a number overrides */,
     plateThickness: 1.5,
     // stem socket (measured on real printed caps): a tapered cross grips best
     socketMode: 'tapered' /* 'tapered'|'cross'|'round' */,
@@ -66,8 +72,8 @@ export const DEFAULT_PARAMS = {
     stemCrossThickness: 1.3,
     socketOpening: 4.6 /* cross width at the opening ('tapered' only) */,
     roundDiameter: 5.0 /* hole diameter ('round' only, glue fit) */,
-    stemOuterDiameter: 7.0 /* boss around the socket; 7.0 keeps a 1 mm wall for every default socket (auto-widened with a warning if too small) */,
-    stemHeight: 4.0 /* socket depth */,
+    stemOuterDiameter: 7.0 /* boss diameter, used only when the socket is deeper than the slab allows */,
+    stemHeight: 3.4 /* socket depth, cut up into the cap slab */,
   },
   keychain: { enabled: false, outerRadius: 4.5, innerRadius: 2.2, angle: 90 /* deg around the base; 90 = top (+Y) */ },
   fit: { clearance: 0.3 /* cap-to-recess gap per side */, switchTolerance: 0.15 /* added per side to the pocket */ },
@@ -91,13 +97,18 @@ export function mergeParams(params = {}) {
     return out;
   };
   const merged = merge(DEFAULT_PARAMS, params);
-  // numeric sanitation: anything NaN/non-numeric falls back to the default
+  // numeric sanitation: anything NaN/non-numeric falls back to the default.
+  // body.height and switch.cavityDepth accept 'auto' (derived) or a finite number.
   for (const group of ['base', 'cap', 'body', 'switch', 'keychain', 'fit', 'design']) {
     for (const k of Object.keys(DEFAULT_PARAMS[group])) {
       const d = DEFAULT_PARAMS[group][k];
+      const v = merged[group][k];
       if (typeof d === 'number') {
-        const v = Number(merged[group][k]);
-        merged[group][k] = Number.isFinite(v) ? v : d;
+        const n = Number(v);
+        merged[group][k] = Number.isFinite(n) ? n : d;
+      } else if (d === 'auto') {
+        const n = typeof v === 'string' && v.trim().toLowerCase() === 'auto' ? NaN : Number(v);
+        merged[group][k] = Number.isFinite(n) ? n : 'auto';
       }
     }
   }
@@ -167,6 +178,10 @@ export async function buildClicker(userParams = {}) {
       cavityDepth: heights.cavityDepth,
       pocketHeight: heights.cavityDepth,
       capZ: heights.capZ,
+      seat: heights.seat,
+      bossBelow: heights.bossBelow,
+      socketCeilingZ: heights.socketCeilingZ,
+      capThickness: Math.max(1.2, params.cap.thickness),
       bodyHeight: heights.height,
       engraveDepth,
       capBounds,

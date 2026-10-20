@@ -24,7 +24,7 @@ Everything runs client-side in the browser: nothing is uploaded, nothing is stor
 
 ## Operating Context
 
-Visitor flow: hub → tool page → import a design (text / SVG / image) → adjust → preview → download → open in slicer (Bambu Studio, PrusaSlicer, OrcaSlicer, Cura) → print. Exports: 3MF (multi-object, per-part colours for multi-material setups) and STL (zip of parts) with equal standing. Desktop-first for the tools (3D viewport + controls), but tool pages must remain usable on a phone. Hardware vocabulary used in tools: MX switch, keycap, stem, plate, cutout, clearance/tolerance, rim, build plate.
+Visitor flow: hub → tool page → import a design (text / SVG / image) → adjust → preview → download → open in slicer (Bambu Studio, PrusaSlicer, OrcaSlicer, Cura) → print. Exports: 3MF (multi-object, per-part colours for multi-material setups) and STL (zip of parts) with equal standing. Desktop-first for the tools (3D viewport + controls), but tool pages must remain usable on a phone. Switch pins: most makers snap the switch's metal pins off, so by default the body cavity fits the lower housing only (pins are not in the height calculation); keeping the pins is an opt-in that deepens the cavity. Hardware vocabulary used in tools: MX switch, keycap, stem, plate, cutout, clearance/tolerance, rim, build plate.
 
 ## Capabilities and Constraints
 
