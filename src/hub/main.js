@@ -123,7 +123,19 @@ function wireDemo() {
   const pushText = debounce((text) => demo && demo.setText(text), 150);
   const pushSize = debounce((mm) => demo && demo.setSize(mm), 150);
 
-  textEl.addEventListener('input', () => pushText(textEl.value));
+  // Carry the typed text into the tool: the Clicker page seeds its design from ?text=.
+  const openTab = region.closest('article')?.querySelector('a.tab');
+  const syncOpenLink = () => {
+    if (!openTab) return;
+    const text = textEl.value.trim();
+    openTab.href = text ? `./clicker/?text=${encodeURIComponent(text)}` : './clicker/';
+  };
+
+  textEl.addEventListener('input', () => {
+    pushText(textEl.value);
+    syncOpenLink();
+  });
+  syncOpenLink();
   sizeEl.addEventListener('input', () => {
     const mm = readSize();
     setDigits(mm);
