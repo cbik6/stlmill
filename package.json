@@ -16,6 +16,7 @@
     "three-mesh-bvh": "^0.9.16"
   },
   "devDependencies": {
+    "@xmldom/xmldom": "^0.9.12",
     "vite": "^8.3.4"
   }
 }

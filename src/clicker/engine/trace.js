@@ -279,31 +279,112 @@ export function loopsToShapes(loops) {
 }
 
 /**
+ * Merge runs of near-collinear vertices: a vertex is dropped while the turn accumulated
+ * since the last kept vertex stays below `angleDeg`. Chord deviation stays negligible
+ * (< r*(1-cos(angle/2))) while tiny pixel jogs on smooth walls disappear.
+ */
+export function mergeNearCollinear(loop, angleDeg) {
+  const n = loop.length >> 1;
+  if (n < 4 || angleDeg <= 0) return loop;
+  const limit = (angleDeg * Math.PI) / 180;
+  const turnAt = (i) => {
+    const ip = (i + n - 1) % n;
+    const inx = (i + 1) % n;
+    const ax = loop[2 * i] - loop[2 * ip], ay = loop[2 * i + 1] - loop[2 * ip + 1];
+    const bx = loop[2 * inx] - loop[2 * i], by = loop[2 * inx + 1] - loop[2 * i + 1];
+    return Math.abs(Math.atan2(ax * by - ay * bx, ax * bx + ay * by));
+  };
+  // start at the sharpest vertex so the accumulation never straddles a corner
+  let start = 0;
+  let maxTurn = -1;
+  for (let i = 0; i < n; i++) {
+    const t = turnAt(i);
+    if (t > maxTurn) {
+      maxTurn = t;
+      start = i;
+    }
+  }
+  const out = [];
+  let accum = 0;
+  for (let k = 0; k < n; k++) {
+    const i = (start + k) % n;
+    const t = turnAt(i);
+    if (k === 0 || accum + t >= limit) {
+      out.push(loop[2 * i], loop[2 * i + 1]);
+      accum = 0;
+    } else {
+      accum += t;
+    }
+  }
+  return out.length >= 6 ? Float64Array.from(out) : loop;
+}
+
+/**
+ * Moving-average low-pass on a closed loop (window = 2*halfWidth+1 vertices, `passes` times).
+ * Applied to the raw 1-px crack loop it removes pixel notches that RDP would otherwise keep
+ * (on a curved contour the notch tips are the farthest-from-chord points). Convex curves shrink
+ * by ~halfWidth^2 / (6 r) px, negligible for printed outlines; sharp corners round over ~halfWidth px.
+ */
+export function boxSmoothClosed(loop, halfWidth, passes = 2) {
+  const n = loop.length >> 1;
+  if (halfWidth <= 0 || n < 2 * halfWidth + 3) return loop;
+  let src = loop;
+  const w = 2 * halfWidth + 1;
+  for (let p = 0; p < passes; p++) {
+    const out = new Float64Array(src.length);
+    let sx = 0, sy = 0;
+    for (let k = -halfWidth; k <= halfWidth; k++) {
+      const j = (k + n) % n;
+      sx += src[2 * j];
+      sy += src[2 * j + 1];
+    }
+    for (let i = 0; i < n; i++) {
+      out[2 * i] = sx / w;
+      out[2 * i + 1] = sy / w;
+      const drop = (i - halfWidth + n) % n;
+      const add = (i + halfWidth + 1) % n;
+      sx += src[2 * add] - src[2 * drop];
+      sy += src[2 * add + 1] - src[2 * drop + 1];
+    }
+    src = out;
+  }
+  return src;
+}
+
+/**
  * Trace a binary mask into THREE.Shape[] (with holes), coordinates in y-up pixel space.
  *
  * options:
+ *   preSmooth          moving-average half-width (px) applied to the raw loop before RDP; 0 = off (default)
  *   simplifyTolerance  RDP tolerance in px (default 0.75 - removes pixel staircases)
  *   smoothIterations   Chaikin passes (default 1)
  *   cornerAngle        turn angle (deg) above which a vertex is kept sharp (default 50)
  *   minArea            drop loops smaller than this many px^2 (default 3)
+ *   postSimplify       RDP tolerance (px) applied after smoothing (default simplifyTolerance / 3)
+ *   mergeAngle         merge near-collinear runs below this turn (deg); 0 = off (default)
  */
 export function traceBitmap(mask, w, h, options = {}) {
   const {
+    preSmooth = 0,
     simplifyTolerance = 0.75,
     smoothIterations = 1,
     cornerAngle = 50,
     minArea = 3,
+    postSimplify = simplifyTolerance / 3,
+    mergeAngle = 0,
   } = options;
 
   const raw = traceLoops(mask, w, h);
   const processed = [];
   for (let loop of raw) {
     if (Math.abs(signedArea(loop)) < minArea) continue;
+    if (preSmooth > 0) loop = boxSmoothClosed(loop, preSmooth, 2);
     loop = simplifyClosed(loop, simplifyTolerance);
     for (let i = 0; i < smoothIterations; i++) loop = chaikinClosed(loop, cornerAngle);
     // Chaikin doubles the vertex count; a light second RDP pass removes the redundant
     // near-collinear points so extrusions have far fewer sliver triangles.
-    if (smoothIterations > 0) loop = simplifyClosed(loop, simplifyTolerance / 3);
+    if (smoothIterations > 0 && postSimplify > 0) loop = simplifyClosed(loop, postSimplify);
+    if (mergeAngle > 0) loop = mergeNearCollinear(loop, mergeAngle);
     loop = removeCollinear(loop);
     if (loop.length >= 6 && Math.abs(signedArea(loop)) >= minArea) processed.push(loop);
   }

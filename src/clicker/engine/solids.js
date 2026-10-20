@@ -20,6 +20,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { Brush, Evaluator, SUBTRACTION, ADDITION, INTERSECTION } from 'three-bvh-csg';
 import { pointsToShape, circlePoints } from './outline.js';
 import { repairMesh } from './repair.js';
+import { ShellBuilder, cleanPolygon, polygonContains, squarePolygon } from './shell.js';
 
 // Simplified Cherry MX reference dimensions (mm), plate-mount
 export const MX = {
@@ -143,27 +144,77 @@ export function resolveHeights(params, warnings) {
   return { height: H, rim, plate, cavityDepth, floor: cavityBottomZ, plateTopZ, plateBottomZ, cavityBottomZ, capZ };
 }
 
-/** Body with closed switch cavity, plate cutout and cap recess (keychain ring unioned when enabled). */
+/**
+ * Body with closed switch cavity, plate cutout and cap recess (keychain ring unioned when enabled).
+ * Built as a CSG-free layered shell (see shell.js): outer wall, rim top, recess wall, plate top,
+ * cutout wall, plate underside, cavity wall, cavity floor, body bottom. All nested polygons share
+ * their vertices between faces and walls, so the result is one closed manifold shell.
+ */
 export function buildBody(layout, params, heights, warnings) {
   const sw = params.switch;
   const tol = Math.max(0, params.fit.switchTolerance);
-  const { height, plateTopZ, plateBottomZ, cavityBottomZ, cavityDepth } = heights;
+  const { height: H, plateTopZ, plateBottomZ, cavityBottomZ, cavityDepth } = heights;
 
-  let g = extrude(layout.bodyShape, height, 0);
-  if (cavityDepth > 0.05) {
-    // closed cavity for the lower housing + sprung clips, ending exactly at the plate underside
-    const cavitySide = Math.max(sw.cutout, sw.cavity) + 2 * tol;
-    g = csg(g, box(cavitySide, cavitySide, cavityBottomZ, plateBottomZ), SUBTRACTION);
+  const O = cleanPolygon(layout.bodyPoints);
+  const R = cleanPolygon(layout.recessPoints);
+  const K = squarePolygon(sw.cutout);
+  const cavitySide = Math.max(sw.cutout, sw.cavity) + 2 * tol;
+  const hasCavity = cavityDepth > 0.05;
+  const distinctCavity = hasCavity && cavitySide > sw.cutout + 0.05;
+  const C = squarePolygon(cavitySide);
+
+  let g;
+  if (!polygonContains(O, R, 0.05)) {
+    warnings.push('Recess outline is not inside the body outline; fell back to boolean construction.');
+    g = buildBodyCSG(layout, params, heights);
+  } else {
+    const b = new ShellBuilder();
+    b.face(O, [], 0, false); // body bottom (solid floor)
+    b.wall(O, 0, H, false); // outer wall
+    b.face(O, [R], H, true); // rim top
+    b.wall(R, plateTopZ, H, true); // recess wall
+    const inner = distinctCavity ? C : K;
+    if (polygonContains(R, K, 0.05) && polygonContains(O, inner, 0.05)) {
+      b.face(R, [K], plateTopZ, true); // plate top (recess floor)
+      if (distinctCavity) {
+        b.wall(K, plateBottomZ, plateTopZ, true); // cutout wall through the plate
+        b.face(C, [K], plateBottomZ, false); // plate underside (cavity ceiling)
+        b.wall(C, cavityBottomZ, plateBottomZ, true); // cavity wall
+        b.face(C, [], cavityBottomZ, true); // cavity floor
+      } else if (hasCavity) {
+        b.wall(K, cavityBottomZ, plateTopZ, true);
+        b.face(K, [], cavityBottomZ, true);
+      } else {
+        b.wall(K, plateBottomZ, plateTopZ, true);
+        b.face(K, [], plateBottomZ, true);
+      }
+    } else {
+      warnings.push('Base is too small for the switch cutout and cavity; the body was built without a switch opening.');
+      b.face(R, [], plateTopZ, true);
+    }
+    g = b.build();
   }
-  // nominal cutout through the plate so the switch clips grip
-  g = csg(g, box(sw.cutout, sw.cutout, plateBottomZ - 0.5, plateTopZ + 0.5), SUBTRACTION);
-  g = csg(g, extrude(layout.recessShape, height - plateTopZ + 1, plateTopZ), SUBTRACTION);
 
   if (params.keychain && params.keychain.enabled) {
     const ring = buildRing(layout, params, heights, warnings);
     if (ring) g = csg(g, ring, ADDITION);
   }
   return finalize(g, 'body', warnings);
+}
+
+/** Boolean fallback for degenerate outlines (recess not inside the body). Relies on repair.js. */
+function buildBodyCSG(layout, params, heights) {
+  const sw = params.switch;
+  const tol = Math.max(0, params.fit.switchTolerance);
+  const { height, plateTopZ, plateBottomZ, cavityBottomZ, cavityDepth } = heights;
+  let g = extrude(layout.bodyShape, height, 0);
+  if (cavityDepth > 0.05) {
+    const cavitySide = Math.max(sw.cutout, sw.cavity) + 2 * tol;
+    g = csg(g, box(cavitySide, cavitySide, cavityBottomZ, plateBottomZ), SUBTRACTION);
+  }
+  g = csg(g, box(sw.cutout, sw.cutout, plateBottomZ - 0.5, plateTopZ + 0.5), SUBTRACTION);
+  g = csg(g, extrude(layout.recessShape, height - plateTopZ + 1, plateTopZ), SUBTRACTION);
+  return g;
 }
 
 /** Distance from the origin to the body outline along direction `angleDeg` (90 = +Y). */
@@ -242,30 +293,71 @@ export function buildCapParts(layout, params, warnings) {
   const t = Math.max(1.2, cap.thickness);
   if (t !== cap.thickness) warnings.push(`Cap thickness raised to ${t} mm (minimum).`);
 
-  let capGeom = extrude(layout.capShape, t, 0);
-  // Stem: a solid cylinder overlapping 0.5 mm into the cap is unioned first, then the MX
-  // cross is subtracted as a prism ending at z = 0. (Unioning a pre-holed stem shape makes
-  // three-bvh-csg drop the socket ceiling fragments on large traced cap faces; this order
-  // keeps every face clean and the result is a single closed shell.)
-  const cylinder = extrude(pointsToShape(circlePoints(sw.stemOuterDiameter / 2, 48)), sw.stemHeight + 0.5, -sw.stemHeight);
-  capGeom = csg(capGeom, cylinder, ADDITION);
-  const crossPrism = extrude(crossShape(params), sw.stemHeight + 1, -sw.stemHeight - 1);
-  capGeom = csg(capGeom, crossPrism, SUBTRACTION);
+  const s = sw.stemHeight;
+  const P = cleanPolygon(layout.capPoints);
+  const S = cleanPolygon(circlePoints(sw.stemOuterDiameter / 2, 48));
+  const X = cleanPolygon(crossShape(params).getPoints(1));
+  const stemFits = polygonContains(P, S, 0.05) && polygonContains(S, X, 0.05);
 
-  let designGeom = null;
+  // design polygons (cleaned once; shared by faces and walls)
+  const designPolys = layout.designShapes.map((sh) => {
+    const pts = sh.extractPoints(1);
+    return { outer: cleanPolygon(pts.shape), holes: pts.holes.map(cleanPolygon).filter((h) => h.length >= 3) };
+  }).filter((d) => d.outer.length >= 3);
+  const designInsideCap = designPolys.length > 0 && designPolys.every((d) => polygonContains(P, d.outer, 0.05));
+
   let engraveDepth = 0;
-  if (layout.designShapes.length && cap.designHeight > 0) {
-    if (cap.designMode === 'engraved') {
-      engraveDepth = Math.min(cap.designHeight, t - 0.8);
-      if (engraveDepth < cap.designHeight) warnings.push(`Engraving depth clamped to ${engraveDepth.toFixed(2)} mm to keep 0.8 mm of cap under it.`);
-      if (engraveDepth > 0.05) {
-        const cutter = extrude(layout.designShapes, engraveDepth + 1, t - engraveDepth);
-        capGeom = csg(capGeom, cutter, SUBTRACTION);
+  const wantEngrave = layout.designShapes.length > 0 && cap.designHeight > 0 && cap.designMode === 'engraved';
+  if (wantEngrave) {
+    engraveDepth = Math.min(cap.designHeight, t - 0.8);
+    if (engraveDepth < cap.designHeight) warnings.push(`Engraving depth clamped to ${engraveDepth.toFixed(2)} mm to keep 0.8 mm of cap under it.`);
+  }
+  const engraveInShell = wantEngrave && engraveDepth > 0.05 && designInsideCap;
+
+  let capGeom;
+  if (stemFits) {
+    // CSG-free closed shell: cap slab + stem socket (+ engraving when the design is inside the cap)
+    const b = new ShellBuilder();
+    b.wall(P, 0, t, false); // cap side wall
+    b.face(P, [S], 0, false); // cap underside around the stem
+    b.face(X, [], 0, false); // socket ceiling (inside the cross)
+    b.wall(S, -s, 0, false); // stem outer wall
+    b.wall(X, -s, 0, true); // cross socket wall
+    b.face(S, [X], -s, false); // stem bottom ring
+    if (engraveInShell) {
+      const zf = t - engraveDepth;
+      b.face(P, designPolys.map((d) => d.outer), t, true); // top surface minus the design
+      for (const d of designPolys) {
+        b.face(d.outer, d.holes, zf, true); // engraving floor
+        b.wall(d.outer, zf, t, true); // engraving side wall
+        for (const h of d.holes) {
+          b.face(h, [], t, true); // island (counter) top
+          b.wall(h, zf, t, false); // island wall
+        }
       }
     } else {
+      b.face(P, [], t, true); // plain top
+    }
+    capGeom = b.build();
+  } else {
+    warnings.push('Cap outline is too small for the stem; fell back to boolean construction.');
+    capGeom = extrude(layout.capShape, t, 0);
+    const cylinder = extrude(pointsToShape(circlePoints(sw.stemOuterDiameter / 2, 48)), s + 0.5, -s);
+    capGeom = csg(capGeom, cylinder, ADDITION);
+    capGeom = csg(capGeom, extrude(crossShape(params), s + 1, -s - 1), SUBTRACTION);
+  }
+  if (wantEngrave && engraveDepth > 0.05 && !engraveInShell) {
+    // design crosses the cap edge (presets) -> boolean subtraction, repaired afterwards
+    const cutter = extrude(layout.designShapes, engraveDepth + 1, t - engraveDepth);
+    capGeom = csg(capGeom, cutter, SUBTRACTION);
+  }
+
+  let designGeom = null;
+  if (layout.designShapes.length && cap.designHeight > 0 && cap.designMode !== 'engraved') {
+    {
       let relief = extrude(layout.designShapes, cap.designHeight, t);
-      if (layout.style !== 'outline') {
-        // presets: clip the design to the cap outline
+      if (!designInsideCap) {
+        // design crosses the cap edge (presets): clip it to the cap outline
         const clip = extrude(layout.capShape, cap.designHeight + 2, t - 1);
         relief = csg(relief, clip, INTERSECTION);
       }

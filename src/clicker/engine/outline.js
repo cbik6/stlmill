@@ -27,6 +27,13 @@ import { traceBitmap, shapesBBox } from './trace.js';
 
 const WORK_PX = 1000; // px across the base's long side for the outline raster
 
+// Printed outlines (body / recess / cap walls) get stronger smoothing than the design relief:
+// a 7-px moving average on the raw pixel loop (kills 1-px notches that RDP would keep as
+// "extreme" points), RDP 0.6 px, two corner-preserving Chaikin passes, a light post-RDP and a
+// merge of near-collinear runs under 2 deg, so walls are clean curves without sub-0.1 mm jogs
+// (which print as vertical hairlines).
+const OUTLINE_TRACE = { preSmooth: 3, simplifyTolerance: 0.6, smoothIterations: 2, cornerAngle: 50, postSimplify: 0.3, mergeAngle: 2, minArea: 4 };
+
 export function pointsToShape(outer, holes = []) {
   const s = new THREE.Shape(outer.map((p) => new THREE.Vector2(p.x, p.y)));
   for (const h of holes) s.holes.push(new THREE.Path(h.map((p) => new THREE.Vector2(p.x, p.y))));
@@ -235,17 +242,17 @@ export function computeLayout(spec, params, warnings = []) {
     const envPts = roundedRectPoints(envelopeSide / 2, envelopeSide / 2, Math.min(2.5, base.cornerRadius), 8).map(toPx);
     rasterizePolygonsEvenOdd([envPts], W, H, capMask);
 
-    let capTraced = traceBitmap(capMask, W, H, { simplifyTolerance: 0.75, minArea: 4 });
+    let capTraced = traceBitmap(capMask, W, H, OUTLINE_TRACE);
     if (capTraced.length > 1) {
       warnings.push('Design has separated parts; the base was filled to their convex hull so it prints as one piece.');
       const hull = convexHull(allPoints(capTraced));
       rasterizePolygonsEvenOdd([hull], W, H, capMask);
-      capTraced = traceBitmap(capMask, W, H, { simplifyTolerance: 0.75, minArea: 4 });
+      capTraced = traceBitmap(capMask, W, H, OUTLINE_TRACE);
     }
     const recessMask = dilateMask(capMask, W, H, clearance * k);
     const bodyMask = dilateMask(capMask, W, H, (wall + clearance) * k);
-    const recessTraced = traceBitmap(recessMask, W, H, { simplifyTolerance: 0.75, minArea: 4 });
-    const bodyTraced = traceBitmap(bodyMask, W, H, { simplifyTolerance: 0.75, minArea: 4 });
+    const recessTraced = traceBitmap(recessMask, W, H, OUTLINE_TRACE);
+    const bodyTraced = traceBitmap(bodyMask, W, H, OUTLINE_TRACE);
 
     const pickOuter = (traced) => {
       let best = null;
@@ -302,6 +309,7 @@ export function computeLayout(spec, params, warnings = []) {
     capLong,
     baseLong: Math.max(bb.maxX - bb.minX, bb.maxY - bb.minY),
     bodyPoints,
+    recessPoints: recessShape.getPoints(1),
     capPoints,
   };
 }
