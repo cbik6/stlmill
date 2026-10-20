@@ -1,0 +1,14 @@
+{
+  // Cloudflare Workers config: serve the Vite build as static assets.
+  // The Cloudflare project runs `npm run build` then `npx wrangler deploy`.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "stlmill",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    // Multi-page site: unknown paths get a plain 404 rather than the hub.
+    "not_found_handling": "404-page",
+    // `/clicker` -> `/clicker/` so relative asset paths resolve.
+    "html_handling": "auto-trailing-slash"
+  }
+}

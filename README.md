@@ -85,14 +85,14 @@ All links use relative paths (`./clicker/`, `../`) so the build works both under
 
 ## Deploy
 
-The site is fully static: build with `npm run build` and serve `dist/`. Any
-static host works; the repo is connected to **Vercel** (framework preset: Vite,
-build `npm run build`, output `dist`), which deploys every push to `main` and
-gives preview URLs for branches.
+The site is fully static: build with `npm run build` and serve `dist/`. The repo
+is connected to **Cloudflare Workers** (Workers & Pages → import repository):
+build command `npm run build`, deploy command `npx wrangler deploy`, with
+`wrangler.jsonc` pointing static assets at `dist/`. Every push to `main`
+deploys; other branches get preview URLs.
 
-Equivalent free options, same settings: Cloudflare Pages, Netlify, GitHub Pages
-(public repo; needs a Pages workflow and **Settings → Pages → Source: GitHub
-Actions**).
+Any static host works with the same build settings (Cloudflare Pages, Vercel,
+Netlify, GitHub Pages).
 
 ### Custom domain
 
