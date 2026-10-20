@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-20T00:00:00Z",
+  "title": "Design System: STLmill",
+  "extensions": {
+    "colorMeta": {
+      "brand-orange": { "role": "primary", "displayName": "Brand Orange", "canonical": "#f07a2a", "tonalRamp": ["oklch(15% 0.17 50)", "oklch(25% 0.17 50)", "oklch(35% 0.17 50)", "oklch(45% 0.17 50)", "oklch(55% 0.17 50)", "oklch(65% 0.17 50)", "oklch(80% 0.17 50)", "oklch(95% 0.17 50)"] },
+      "orange-ink": { "role": "primary", "displayName": "Orange Ink", "canonical": "#4a2008" },
+      "orange-ink-soft": { "role": "primary", "displayName": "Orange Ink Soft", "canonical": "#5a2a0e" },
+      "orange-emb": { "role": "primary", "displayName": "Orange Relief Face", "canonical": "#c7591a" },
+      "orange-emb-hi": { "role": "primary", "displayName": "Orange Relief Highlight", "canonical": "#ffb37a" },
+      "orange-field": { "role": "primary", "displayName": "Orange Field Well", "canonical": "#fff1e6" },
+      "filament-teal": { "role": "secondary", "displayName": "Filament Teal", "canonical": "#1fa39a", "tonalRamp": ["oklch(15% 0.11 185)", "oklch(25% 0.11 185)", "oklch(35% 0.11 185)", "oklch(45% 0.11 185)", "oklch(55% 0.11 185)", "oklch(65% 0.11 185)", "oklch(80% 0.11 185)", "oklch(95% 0.11 185)"] },
+      "teal-ink": { "role": "secondary", "displayName": "Teal Ink", "canonical": "#052e2b" },
+      "teal-emb-face": { "role": "secondary", "displayName": "Teal Relief Face", "canonical": "#cdf3ee" },
+      "teal-emb-shade": { "role": "secondary", "displayName": "Teal Relief Shade", "canonical": "#0a4f4a" },
+      "pla-white": { "role": "tertiary", "displayName": "PLA White", "canonical": "#f2efe9", "tonalRamp": ["oklch(15% 0.008 85)", "oklch(25% 0.008 85)", "oklch(35% 0.008 85)", "oklch(45% 0.008 85)", "oklch(55% 0.008 85)", "oklch(65% 0.008 85)", "oklch(80% 0.008 85)", "oklch(95% 0.008 85)"] },
+      "white-ink-2": { "role": "tertiary", "displayName": "White Ink 2", "canonical": "#6e5036" },
+      "tab-text": { "role": "tertiary", "displayName": "Tab Text", "canonical": "#f2efe9" },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#1c1b19", "tonalRamp": ["oklch(15% 0.004 80)", "oklch(25% 0.004 80)", "oklch(35% 0.004 80)", "oklch(45% 0.004 80)", "oklch(55% 0.004 80)", "oklch(65% 0.004 80)", "oklch(80% 0.004 80)", "oklch(95% 0.004 80)"] },
+      "board": { "role": "neutral", "displayName": "Hardboard", "canonical": "#a47a52", "tonalRamp": ["oklch(15% 0.08 65)", "oklch(25% 0.08 65)", "oklch(35% 0.08 65)", "oklch(45% 0.08 65)", "oklch(55% 0.08 65)", "oklch(65% 0.08 65)", "oklch(80% 0.08 65)", "oklch(95% 0.08 65)"] },
+      "hole": { "role": "neutral", "displayName": "Drilled Hole", "canonical": "#6e5036" },
+      "hole-shade": { "role": "neutral", "displayName": "Hole Shade / Shadow Board", "canonical": "#4a3322", "tonalRamp": ["oklch(15% 0.05 55)", "oklch(25% 0.05 55)", "oklch(35% 0.05 55)", "oklch(45% 0.05 55)", "oklch(55% 0.05 55)", "oklch(65% 0.05 55)", "oklch(80% 0.05 55)", "oklch(95% 0.05 55)"] },
+      "steel": { "role": "neutral", "displayName": "Steel", "canonical": "#2b2521" },
+      "tool-bg": { "role": "neutral", "displayName": "Tool Ground", "canonical": "#f6f5f3" },
+      "tool-panel": { "role": "neutral", "displayName": "Tool Panel", "canonical": "#ffffff" },
+      "tool-border": { "role": "neutral", "displayName": "Tool Border", "canonical": "#dcd9d4" },
+      "tool-text-muted": { "role": "neutral", "displayName": "Tool Muted Text", "canonical": "#6b6762" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The hero card's tool name, in relief. Uppercase." },
+      "headline": { "displayName": "Headline", "purpose": "Tool name on a generic live card; sheet title (44px) and Fit label (56px) share the face and relief." },
+      "title": { "displayName": "Title", "purpose": "Step titles on the instruction sheet, ink relief." },
+      "action": { "displayName": "Action", "purpose": "Black tab text; 22px under 900px." },
+      "readout": { "displayName": "Readout", "purpose": "Single digits in readout tiles (tabular-nums); the card field uses the same face at 52px." },
+      "lead": { "displayName": "Lead", "purpose": "One-line sub under a tool name; the tag lead. 20px on generic cards and mobile." },
+      "body": { "displayName": "Body", "purpose": "Step text, fit values, tag lines (17-19px)." },
+      "label": { "displayName": "Label", "purpose": "Control labels and dl terms only, in the card's ink tint. Never a kicker." },
+      "wordmark": { "displayName": "Wordmark", "purpose": "The pinned brand only (brand commitment). 22px under 900px." }
+    },
+    "shadows": [
+      { "name": "card-hung", "value": "0 22px 36px rgba(0,0,0,0.35), inset 0 2px 0 rgba(255,255,255,0.25)", "purpose": "Orange and teal swatches at rest; the inset line is the lit top edge." },
+      { "name": "card-lifted", "value": "0 30px 44px rgba(0,0,0,0.42), inset 0 2px 0 rgba(255,255,255,0.25)", "purpose": "Hover state of a hung card, with translateY(-4px)." },
+      { "name": "card-white", "value": "0 10px 18px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.7)", "purpose": "PLA white swatches at rest, closer to the board." },
+      { "name": "card-white-lifted", "value": "0 16px 26px rgba(0,0,0,0.36), inset 0 1px 0 rgba(255,255,255,0.7)", "purpose": "Hover state of a white swatch." },
+      { "name": "pinned", "value": "0 8px 14px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.7)", "purpose": "The pinned brand swatch." },
+      { "name": "tab", "value": "0 10px 18px rgba(0,0,0,0.3)", "purpose": "The black tab hanging below a card edge." },
+      { "name": "peg", "value": "inset 0 2px 2px rgba(255,255,255,0.28), 0 1px 2px rgba(0,0,0,0.5)", "purpose": "Steel peg dome (12px); the brand pin uses inset 0 1px 1px and 0 1px 2px rgba(0,0,0,0.45)." },
+      { "name": "hole", "value": "inset 0 2px 3px rgba(0,0,0,0.45)", "purpose": "The punched hole in a card (16px disc in the board colour)." },
+      { "name": "field-well", "value": "inset 0 2px 4px rgba(90,42,14,0.18)", "purpose": "The text field sunk into an orange card." },
+      { "name": "relief-orange", "value": "-1px -1px 0 #ffb37a, 1px 1px 0 #a4430f, 2px 2px 0 #8e3a0c, 3px 6px 7px rgba(70,25,0,0.4)", "purpose": "text-shadow: raised type on an orange card (face #c7591a)." },
+      { "name": "relief-teal", "value": "1px 1px 0 #0a4f4a, 2px 4px 4px rgba(0,40,36,0.4)", "purpose": "text-shadow: raised type on teal (light face #cdf3ee)." },
+      { "name": "relief-ink", "value": "-1px -1px 0 rgba(255,255,255,0.6), 1px 1px 0 #000, 2px 4px 5px rgba(0,0,0,0.3)", "purpose": "text-shadow: ink relief on PLA white; step titles use 1px 2px 3px rgba(0,0,0,0.28) for the cast." },
+      { "name": "tool-shadow-sm", "value": "0 1px 2px rgba(20,18,15,0.06)", "purpose": "Tool-page panels at rest." },
+      { "name": "tool-shadow", "value": "0 2px 8px rgba(20,18,15,0.08), 0 1px 2px rgba(20,18,15,0.05)", "purpose": "Tool-page interactive card hover." },
+      { "name": "tool-shadow-lg", "value": "0 10px 30px rgba(20,18,15,0.12)", "purpose": "Tool-page overlays." }
+    ],
+    "motion": [
+      { "name": "ease-lift", "value": "cubic-bezier(0.23, 1, 0.32, 1)", "purpose": "The only easing on the hub: card lift, tab press, digit tick." },
+      { "name": "duration-lift", "value": "160ms", "purpose": "Card hover lift (transform + box-shadow). Removed under prefers-reduced-motion." },
+      { "name": "duration-tick", "value": "120ms", "purpose": "Digit tile tick (translateY -5px at 45%) and tab active scale(0.97)." },
+      { "name": "tool-transition", "value": "150ms ease", "purpose": "Shared token for tool-page control state changes." }
+    ],
+    "breakpoints": [
+      { "name": "one-column", "value": "1279px", "purpose": "max-width: wall and row2 collapse to one column; outlines go three across." },
+      { "name": "mobile", "value": "899px", "purpose": "max-width: 16px gutters, hero card stacks, tab 60px, labels 24px." },
+      { "name": "narrow", "value": "559px", "purpose": "max-width: shadow outlines one per row at 120px." },
+      { "name": "tool-container", "value": "720px", "purpose": "min-width: tool-page .container gutters grow from 16px to 32px." }
+    ],
+    "boardGround": {
+      "grid": "48px",
+      "note": "Three radial-gradient layers (hole floor #6e5036 r4.4 at 24/24.6, shade #4a3322 r4.9 at 24/23.6, rim rgba(255,255,255,0.16) r5.2 at 24/25.4) over a 256px tileable SVG feTurbulence fractalNoise (baseFrequency 0.9, 3 octaves, seed 7) tinted to the board hue at alpha 0.16.",
+      "dimmed": { "board": "#6b4d33", "hole": "#3e2a1b", "hole-shade": "#28190f", "hole-rim": "rgba(255,255,255,0.1)" }
+    }
+  },
+  "components": [
+    {
+      "name": "Tab (card action)",
+      "kind": "button",
+      "refersTo": "tab-action",
+      "description": "The card's own black tab, hanging off its bottom edge. The only primary action on a swatch.",
+      "html": "<a class=\"ds-tab\" href=\"#\">Open the mill<svg class=\"ds-tab-arrow\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 12h16M13 5l7 7-7 7\"/></svg></a>",
+      "css": ".ds-tab { display: inline-flex; align-items: center; height: 72px; padding: 0 36px; border-radius: 0 0 12px 12px; background: var(--ink, #1c1b19); color: var(--tab-text, #f2efe9); font-family: 'Barlow Semi Condensed', 'Barlow', system-ui, sans-serif; font-weight: 800; font-size: 30px; line-height: 1; letter-spacing: 0.04em; text-transform: uppercase; text-decoration: none; white-space: nowrap; box-shadow: 0 10px 18px rgba(0,0,0,0.3); transition: transform 120ms cubic-bezier(0.23,1,0.32,1); } .ds-tab:hover { color: var(--tab-text, #f2efe9); } .ds-tab:active { transform: scale(0.97); } .ds-tab:focus-visible { outline: 3px solid var(--ink, #1c1b19); outline-offset: 3px; } .ds-tab-arrow { width: 1em; height: 1em; margin-left: 0.6em; color: var(--brand-orange, #f07a2a); flex: none; }"
+    },
+    {
+      "name": "Swatch card (orange, live tool)",
+      "kind": "card",
+      "refersTo": "swatch-orange",
+      "description": "A printed PLA swatch on a steel peg with a punched hole, a relief label, tinted sub-copy and its tab.",
+      "html": "<article class=\"ds-hanger\"><span class=\"ds-peg\" aria-hidden=\"true\"></span><div class=\"ds-swatch ds-swatch-orange\"><span class=\"ds-hole\" aria-hidden=\"true\"></span><h3 class=\"ds-emb ds-emb-orange\">Clicker</h3><p class=\"ds-sub\">A keyboard-switch fidget with your text on top. Type it, print it.</p><a class=\"ds-tab\" href=\"#\">Open the mill</a></div></article>",
+      "css": ".ds-hanger { position: relative; width: 420px; margin: 0 0 26px; list-style: none; } .ds-peg { position: absolute; z-index: 2; top: 17px; left: 50%; width: 12px; height: 12px; border-radius: 50%; background: var(--steel, #2b2521); box-shadow: inset 0 2px 2px rgba(255,255,255,0.28), 0 1px 2px rgba(0,0,0,0.5); transform: translateX(-50%); pointer-events: none; } .ds-swatch { position: relative; min-height: 300px; padding: 52px 40px 100px; border-radius: 10px; color: var(--ink, #1c1b19); box-shadow: 0 22px 36px rgba(0,0,0,0.35), inset 0 2px 0 rgba(255,255,255,0.25); transition: transform 160ms cubic-bezier(0.23,1,0.32,1), box-shadow 160ms cubic-bezier(0.23,1,0.32,1); } .ds-swatch-orange { background: var(--brand-orange, #f07a2a); } .ds-hanger:hover > .ds-swatch { transform: translateY(-4px); box-shadow: 0 30px 44px rgba(0,0,0,0.42), inset 0 2px 0 rgba(255,255,255,0.25); } .ds-hole { position: absolute; top: 18px; left: 50%; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%; background: var(--board, #a47a52); box-shadow: inset 0 2px 3px rgba(0,0,0,0.45); } .ds-emb { margin: 0; font-family: 'Barlow Semi Condensed', 'Barlow', system-ui, sans-serif; font-weight: 800; font-size: 64px; line-height: 1; letter-spacing: -0.02em; text-transform: uppercase; } .ds-emb-orange { color: var(--orange-emb, #c7591a); text-shadow: -1px -1px 0 var(--orange-emb-hi, #ffb37a), 1px 1px 0 #a4430f, 2px 2px 0 #8e3a0c, 3px 6px 7px rgba(70,25,0,0.4); } .ds-sub { max-width: 420px; margin: 20px 0 0; font-family: 'Barlow', system-ui, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.3; color: var(--orange-ink-soft, #5a2a0e); } .ds-tab { position: absolute; left: 40px; bottom: -26px; display: inline-flex; align-items: center; height: 72px; padding: 0 36px; border-radius: 0 0 12px 12px; background: var(--ink, #1c1b19); color: var(--tab-text, #f2efe9); font-family: 'Barlow Semi Condensed', 'Barlow', system-ui, sans-serif; font-weight: 800; font-size: 30px; line-height: 1; letter-spacing: 0.04em; text-transform: uppercase; text-decoration: none; white-space: nowrap; box-shadow: 0 10px 18px rgba(0,0,0,0.3); } .ds-tab:active { transform: scale(0.97); } .ds-swatch :focus-visible { outline: 3px solid var(--ink, #1c1b19); outline-offset: 3px; }"
+    },
+    {
+      "name": "Swatch card (PLA white, hanging tag)",
+      "kind": "card",
+      "refersTo": "swatch-white",
+      "description": "A white swatch hung sideways on its peg, carrying plain copy with warm (never gray) secondary text and an orange-underlined link.",
+      "html": "<aside class=\"ds-hanger-tag\"><span class=\"ds-peg-side\" aria-hidden=\"true\"></span><div class=\"ds-tag\"><span class=\"ds-hole-side\" aria-hidden=\"true\"></span><p class=\"ds-tag-lead\">Runs in your browser. Nothing uploaded, no account.</p><p class=\"ds-tag-line\">Files are for personal use.</p><p class=\"ds-tag-line\">Made by Clark · <a href=\"#\">source on GitHub</a></p></div></aside>",
+      "css": ".ds-hanger-tag { position: relative; max-width: 520px; } .ds-peg-side { position: absolute; z-index: 2; top: calc(50% - 9px); left: 24px; width: 12px; height: 12px; border-radius: 50%; background: var(--steel, #2b2521); box-shadow: inset 0 2px 2px rgba(255,255,255,0.28), 0 1px 2px rgba(0,0,0,0.5); transform: translateX(-50%); } .ds-tag { position: relative; padding: 22px 28px 22px 60px; border-radius: 10px; background: var(--pla-white, #f2efe9); color: var(--ink, #1c1b19); font-family: 'Barlow', system-ui, sans-serif; font-size: 19px; line-height: 1.4; box-shadow: 0 10px 18px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.7); transition: transform 160ms cubic-bezier(0.23,1,0.32,1), box-shadow 160ms cubic-bezier(0.23,1,0.32,1); } .ds-hanger-tag:hover > .ds-tag { transform: translateY(-4px); box-shadow: 0 16px 26px rgba(0,0,0,0.36), inset 0 1px 0 rgba(255,255,255,0.7); } .ds-hole-side { position: absolute; top: 50%; left: 24px; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: var(--board, #a47a52); box-shadow: inset 0 2px 3px rgba(0,0,0,0.45); } .ds-tag p { margin: 0; } .ds-tag-lead { margin-bottom: 4px; font-size: 24px; font-weight: 600; line-height: 1.25; } .ds-tag-line { color: var(--white-ink-2, #6e5036); } .ds-tag a { color: var(--ink, #1c1b19); text-decoration: underline; text-decoration-color: var(--brand-orange, #f07a2a); text-decoration-thickness: 2px; text-underline-offset: 3px; } .ds-tag a:hover { text-decoration-color: var(--ink, #1c1b19); } .ds-tag a:focus-visible { outline: 3px solid var(--ink, #1c1b19); outline-offset: 3px; }"
+    },
+    {
+      "name": "Shadow outline (tool not built yet)",
+      "kind": "custom",
+      "refersTo": "shadow-outline",
+      "description": "The shadow-board outline of a card on an empty peg: dashed in the hole colour, labelled in unlit type. Never a pill, never a link, no hover.",
+      "html": "<ul class=\"ds-shadows\"><li class=\"ds-shadow\"><span class=\"ds-peg\" aria-hidden=\"true\"></span><span class=\"ds-hole-dashed\" aria-hidden=\"true\"></span><span class=\"ds-shadow-label\">Keychain</span><span class=\"ds-vh\">— not built yet</span></li></ul>",
+      "css": ".ds-shadows { display: grid; grid-template-columns: 1fr; width: 260px; margin: 0; padding: 0; list-style: none; } .ds-shadow { position: relative; min-height: 250px; border: 4px dashed var(--hole-shade, #4a3322); border-radius: 10px; } .ds-peg { position: absolute; z-index: 2; top: 13px; left: 50%; width: 12px; height: 12px; border-radius: 50%; background: var(--steel, #2b2521); box-shadow: inset 0 2px 2px rgba(255,255,255,0.28), 0 1px 2px rgba(0,0,0,0.5); transform: translateX(-50%); } .ds-hole-dashed { position: absolute; top: 14px; left: 50%; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%; border: 3px dashed var(--hole-shade, #4a3322); } .ds-shadow-label { position: absolute; right: 0; bottom: 30px; left: 0; padding: 0 12px; font-family: 'Barlow Semi Condensed', 'Barlow', system-ui, sans-serif; font-weight: 800; font-size: clamp(24px, 2.6vw, 40px); line-height: 1; letter-spacing: 0.06em; text-transform: uppercase; text-align: center; color: var(--hole-shade, #4a3322); overflow-wrap: anywhere; } .ds-vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }"
+    },
+    {
+      "name": "Field on an orange card",
+      "kind": "input",
+      "refersTo": "field-on-orange",
+      "description": "A text field sunk into the card: warm off-white well, tinted-ink border, display 800 input text, uppercase label above and a hint below.",
+      "html": "<div class=\"ds-field-wrap\"><label class=\"ds-ctl-label\" for=\"ds-demo-text\">Text on the cap</label><input class=\"ds-field\" id=\"ds-demo-text\" type=\"text\" value=\"STL\" maxlength=\"12\" autocomplete=\"off\"><span class=\"ds-ctl-hint\">Up to 12 characters</span></div>",
+      "css": ".ds-field-wrap { padding: 24px; background: var(--brand-orange, #f07a2a); border-radius: 10px; width: 380px; } .ds-ctl-label { display: block; margin: 0 0 10px; font-family: 'Barlow Semi Condensed', 'Barlow', system-ui, sans-serif; font-weight: 600; font-size: 15px; line-height: 1; letter-spacing: 0.08em; text-transform: uppercase; color: var(--orange-ink, #4a2008); } .ds-field { -webkit-appearance: none; appearance: none; width: 100%; height: 88px; padding: 0 24px; border: 3px solid var(--orange-ink-soft, #5a2a0e); border-radius: 8px; background: var(--orange-field, #fff1e6); color: var(--ink, #1c1b19); font-family: 'Barlow Semi Condensed', 'Barlow', system-ui, sans-serif; font-weight: 800; font-size: 52px; line-height: 1; letter-spacing: 0.02em; box-shadow: inset 0 2px 4px rgba(90,42,14,0.18); caret-color: var(--ink, #1c1b19); } .ds-field:focus { outline: none; border-color: var(--ink, #1c1b19); } .ds-field:focus-visible { outline: 3px solid var(--ink, #1c1b19); outline-offset: 3px; } .ds-field::placeholder { color: var(--orange-ink, #4a2008); opacity: 0.6; } .ds-ctl-hint { display: block; margin-top: 8px; font-family: 'Barlow', system-ui, sans-serif; font-size: 14px; line-height: 1.3; color: var(--orange-ink, #4a2008); }"
+    },
+    {
+      "name": "Digit readout with range",
+      "kind": "custom",
+      "refersTo": "digit-tile",
+      "description": "Fixed two-digit millimetre readout in black tiles with an orange-highlight digit, a unit, and the card's range slider below. Digits tick on change; nothing reflows.",
+      "html": "<div class=\"ds-size\"><span class=\"ds-ctl-label\">Cap width</span><div class=\"ds-readout\" aria-hidden=\"true\"><span class=\"ds-digit\">3</span><span class=\"ds-digit\">5</span><span class=\"ds-unit\">mm</span></div><input class=\"ds-range\" type=\"range\" min=\"20\" max=\"60\" step=\"1\" value=\"35\" aria-label=\"Cap width\"></div>",
+      "css": ".ds-size { width: 280px; padding: 24px; background: var(--brand-orange, #f07a2a); border-radius: 10px; } .ds-ctl-label { display: block; margin: 0 0 10px; font-family: 'Barlow Semi Condensed', 'Barlow', system-ui, sans-serif; font-weight: 600; font-size: 15px; line-height: 1; letter-spacing: 0.08em; text-transform: uppercase; color: var(--orange-ink, #4a2008); } .ds-readout { display: flex; align-items: center; gap: 8px; height: 88px; } .ds-digit { display: grid; place-items: center; width: 44px; height: 64px; border-radius: 4px; background: var(--ink, #1c1b19); color: var(--orange-emb-hi, #ffb37a); font-family: 'Barlow Semi Condensed', 'Barlow', system-ui, sans-serif; font-weight: 800; font-size: 44px; line-height: 1; font-variant-numeric: tabular-nums; } .ds-unit { margin-left: 6px; font-family: 'Barlow', system-ui, sans-serif; font-size: 24px; font-weight: 600; color: var(--orange-ink-soft, #5a2a0e); } .ds-range { -webkit-appearance: none; appearance: none; width: 100%; height: 28px; margin: 10px 0 0; padding: 0; background: transparent; cursor: pointer; } .ds-range::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: var(--orange-ink, #4a2008); box-shadow: inset 0 1px 2px rgba(0,0,0,0.35); } .ds-range::-moz-range-track { height: 6px; border-radius: 3px; background: var(--orange-ink, #4a2008); box-shadow: inset 0 1px 2px rgba(0,0,0,0.35); } .ds-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; margin-top: -8px; border: 3px solid var(--orange-field, #fff1e6); border-radius: 50%; background: var(--ink, #1c1b19); box-shadow: 0 2px 4px rgba(0,0,0,0.35); } .ds-range::-moz-range-thumb { width: 16px; height: 16px; border: 3px solid var(--orange-field, #fff1e6); border-radius: 50%; background: var(--ink, #1c1b19); box-shadow: 0 2px 4px rgba(0,0,0,0.35); } .ds-range:focus-visible { outline: none; } .ds-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--brand-orange, #f07a2a), 0 0 0 6px var(--ink, #1c1b19); } .ds-range:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(--brand-orange, #f07a2a), 0 0 0 6px var(--ink, #1c1b19); }"
+    },
+    {
+      "name": "Pinned brand",
+      "kind": "nav",
+      "refersTo": "pinned-brand",
+      "description": "The site's only navigation: a small PLA-white swatch pinned top-left with the millstone mark and the Space Grotesk wordmark.",
+      "html": "<a class=\"ds-pinned\" href=\"#\" aria-label=\"STLmill home\"><span class=\"ds-pin\" aria-hidden=\"true\"></span><svg class=\"ds-mark\" viewBox=\"0 0 120 120\" aria-hidden=\"true\"><path fill=\"currentColor\" fill-rule=\"evenodd\" d=\"M60 8a52 52 0 1 1 0 104a52 52 0 1 1 0-104zM50 50v20h20V50z\"/><g stroke=\"#F07A2A\" stroke-width=\"2.4\" stroke-linecap=\"round\" fill=\"none\"><line x1=\"60\" y1=\"78\" x2=\"60\" y2=\"104\"/><line x1=\"42\" y1=\"60\" x2=\"16\" y2=\"60\"/><line x1=\"78\" y1=\"60\" x2=\"104\" y2=\"60\"/><line x1=\"47\" y1=\"73\" x2=\"29\" y2=\"91\"/><line x1=\"73\" y1=\"73\" x2=\"91\" y2=\"91\"/><line x1=\"47\" y1=\"47\" x2=\"29\" y2=\"29\"/><line x1=\"73\" y1=\"47\" x2=\"91\" y2=\"29\"/></g><path fill=\"#F07A2A\" d=\"M31 13.4A52 52 0 0 1 89 13.4L60 40z\"/></svg><span class=\"ds-wordmark\">STLmill</span></a>",
+      "css": ".ds-pinned { position: relative; display: inline-flex; align-items: center; gap: 12px; padding: 14px 20px 14px 16px; border-radius: 6px; background: var(--pla-white, #f2efe9); color: var(--ink, #1c1b19); box-shadow: 0 8px 14px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.7); text-decoration: none; } .ds-pinned:hover { color: var(--ink, #1c1b19); text-decoration: none; } .ds-pinned:focus-visible { outline: 3px solid var(--ink, #1c1b19); outline-offset: 3px; } .ds-pin { position: absolute; top: 6px; left: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--steel, #2b2521); box-shadow: inset 0 1px 1px rgba(255,255,255,0.28), 0 1px 2px rgba(0,0,0,0.45); } .ds-mark { width: 30px; height: 30px; flex: none; display: block; } .ds-wordmark { font-family: 'Space Grotesk', 'Barlow', system-ui, sans-serif; font-weight: 700; font-size: 26px; line-height: 1; letter-spacing: -0.03em; }"
+    },
+    {
+      "name": "Spec list on teal (Fit card)",
+      "kind": "card",
+      "refersTo": "swatch-teal",
+      "description": "A teal swatch with the light-face relief label and a dl of hardware-fit values: uppercase teal-ink terms, ink values.",
+      "html": "<article class=\"ds-hanger\"><span class=\"ds-peg\" aria-hidden=\"true\"></span><div class=\"ds-swatch ds-swatch-teal\"><span class=\"ds-hole\" aria-hidden=\"true\"></span><h3 class=\"ds-emb ds-emb-teal\">Fit</h3><dl class=\"ds-fit-list\"><div class=\"ds-fit-row\"><dt>Switch</dt><dd>Cherry MX</dd></div><div class=\"ds-fit-row\"><dt>Clip-in cutout</dt><dd>14 mm</dd></div><div class=\"ds-fit-row\"><dt>Housing pocket</dt><dd>15.6 mm</dd></div></dl></div></article>",
+      "css": ".ds-hanger { position: relative; width: 440px; } .ds-peg { position: absolute; z-index: 2; top: 17px; left: 50%; width: 12px; height: 12px; border-radius: 50%; background: var(--steel, #2b2521); box-shadow: inset 0 2px 2px rgba(255,255,255,0.28), 0 1px 2px rgba(0,0,0,0.5); transform: translateX(-50%); } .ds-swatch { position: relative; min-height: 250px; padding: 48px 32px 32px; border-radius: 10px; color: var(--ink, #1c1b19); box-shadow: 0 22px 36px rgba(0,0,0,0.35), inset 0 2px 0 rgba(255,255,255,0.25); transition: transform 160ms cubic-bezier(0.23,1,0.32,1), box-shadow 160ms cubic-bezier(0.23,1,0.32,1); } .ds-swatch-teal { background: var(--filament-teal, #1fa39a); } .ds-hanger:hover > .ds-swatch { transform: translateY(-4px); box-shadow: 0 30px 44px rgba(0,0,0,0.42), inset 0 2px 0 rgba(255,255,255,0.25); } .ds-hole { position: absolute; top: 18px; left: 50%; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%; background: var(--board, #a47a52); box-shadow: inset 0 2px 3px rgba(0,0,0,0.45); } .ds-emb { margin: 0; font-family: 'Barlow Semi Condensed', 'Barlow', system-ui, sans-serif; font-weight: 800; font-size: 56px; line-height: 1; letter-spacing: -0.02em; text-transform: uppercase; } .ds-emb-teal { color: #cdf3ee; text-shadow: 1px 1px 0 #0a4f4a, 2px 4px 4px rgba(0,40,36,0.4); } .ds-fit-list { display: grid; gap: 12px; margin: 24px 0 0; font-family: 'Barlow', system-ui, sans-serif; font-size: 17px; line-height: 1.4; } .ds-fit-row { display: grid; grid-template-columns: 136px minmax(0, 1fr); gap: 16px; } .ds-fit-row dt { padding-top: 3px; font-family: 'Barlow Semi Condensed', 'Barlow', system-ui, sans-serif; font-weight: 600; font-size: 14px; line-height: 1.2; letter-spacing: 0.06em; text-transform: uppercase; color: var(--teal-ink, #052e2b); } .ds-fit-row dd { margin: 0; font-weight: 600; color: var(--ink, #1c1b19); }"
+    },
+    {
+      "name": "Tool-page button (shared tokens)",
+      "kind": "button",
+      "refersTo": "tool-button-primary",
+      "description": "The in-app control button from base.css for Operate surfaces: 40px, 10px radius, orange primary on the neutral tool ground. Not used on the hub.",
+      "html": "<div class=\"ds-tool-row\"><button class=\"ds-btn ds-btn-primary\" type=\"button\">Download 3MF</button><button class=\"ds-btn\" type=\"button\">Reset</button><button class=\"ds-btn ds-btn-ghost\" type=\"button\">Help</button></div>",
+      "css": ".ds-tool-row { display: flex; gap: 12px; padding: 24px; background: var(--bg, #f6f5f3); border-radius: 16px; } .ds-btn { -webkit-appearance: none; appearance: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 0 16px; border: 1px solid var(--border-strong, #c3bfb8); border-radius: 10px; background: var(--bg-elevated, #ffffff); color: var(--text, #1c1b19); font-family: 'Barlow', system-ui, sans-serif; font-size: 14px; font-weight: 600; line-height: 1; cursor: pointer; white-space: nowrap; transition: background 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease; } .ds-btn:hover { background: var(--panel-hover, #fbfaf8); border-color: var(--text-faint, #9a958e); } .ds-btn:active { background: var(--bg-sunken, #edebe8); } .ds-btn:focus-visible { outline: 2px solid var(--accent, #f07a2a); outline-offset: 2px; } .ds-btn-primary { background: var(--accent, #f07a2a); border-color: var(--accent, #f07a2a); color: var(--accent-contrast, #ffffff); } .ds-btn-primary:hover { background: var(--accent-hover, #d9661a); border-color: var(--accent-hover, #d9661a); color: var(--accent-contrast, #ffffff); } .ds-btn-primary:active { background: var(--accent-active, #c2570f); border-color: var(--accent-active, #c2570f); } .ds-btn-ghost { background: transparent; border-color: transparent; } .ds-btn-ghost:hover { background: var(--accent-soft, rgba(240,122,42,0.12)); border-color: transparent; }"
+    },
+    {
+      "name": "Tool-page input (shared tokens)",
+      "kind": "input",
+      "refersTo": "tool-panel",
+      "description": "The in-app text/number field from base.css: 40px, 1px border, 10px radius, orange ring on focus. For Operate surfaces, not the hub.",
+      "html": "<div class=\"ds-tool-field\"><label class=\"ds-tool-label\" for=\"ds-tool-input\">Cap width (mm)</label><input class=\"ds-tool-input\" id=\"ds-tool-input\" type=\"number\" value=\"35\" min=\"20\" max=\"60\"><span class=\"ds-tool-hint\">20 to 60 mm</span></div>",
+      "css": ".ds-tool-field { display: flex; flex-direction: column; gap: 4px; width: 280px; padding: 24px; background: var(--panel, #ffffff); border: 1px solid var(--border, #dcd9d4); border-radius: 16px; box-shadow: 0 1px 2px rgba(20,18,15,0.06); font-family: 'Barlow', system-ui, sans-serif; } .ds-tool-label { display: block; font-size: 14px; font-weight: 600; color: var(--text, #1c1b19); margin-bottom: 4px; } .ds-tool-input { -webkit-appearance: none; appearance: none; width: 100%; min-height: 40px; padding: 0 12px; border: 1px solid var(--border-strong, #c3bfb8); border-radius: 10px; background: var(--bg-elevated, #ffffff); color: var(--text, #1c1b19); font: inherit; font-size: 14px; transition: border-color 150ms ease, box-shadow 150ms ease; } .ds-tool-input:focus { outline: none; border-color: var(--accent, #f07a2a); box-shadow: 0 0 0 3px var(--ring, rgba(240,122,42,0.45)); } .ds-tool-input::placeholder { color: var(--text-faint, #9a958e); } .ds-tool-hint { font-size: 12px; color: var(--text-muted, #6b6762); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Swatch Wall",
+    "overview": "STLmill is a workshop pegboard. The ground is tempered hardboard with a 48 px grid of drilled holes and a faint fractal grain; everything that exists hangs on it as a printed PLA swatch card on a steel peg, with a real hole punched through the card. Type on a card is not printed flat, it is raised: a light edge up-left, a stepped extrusion down-right, a soft cast shadow. Actions are the card's own black tab, hanging off its bottom edge. Tools that do not exist yet are the shadow-board outline of a card, dashed in the dark hole colour on an empty peg: honest, unlit, never a \"coming soon\" pill.\n\nThe scene is physical, so it is lit once. The hub pins color-scheme: light and never swaps with the OS theme; the shared tokens carry a dimmed board for tool pages that keep the theme toggle, but the swatches stay as printed in both. Density is generous on the hub (one big card, wide gutters, nothing competing with the live object) and should tighten on tool pages, where the 3D viewport is the hero and controls sit in flat panels on the neutral tool ground.\n\nThe hub refuses the headline, subline, button, card-grid arrangement. There is no hero copy above the fold; the live three.js clicker rebuilding as the visitor types is the proof, and the only large words are the names of things you can make.",
+    "keyCharacteristics": [
+      "Hardboard ground (#a47a52) with a 48 px drilled-hole grid and SVG feTurbulence grain; the one lit scene, never theme-swapped on the hub.",
+      "Three card materials only: brand orange, filament teal, PLA white. Secondary text on a card is an ink tint of that card's hue, never gray.",
+      "Raised display type (Barlow Semi Condensed 800, uppercase) with a per-hue relief recipe; body in Barlow 400/600; Space Grotesk 700 for the wordmark only.",
+      "Black tabs as actions, with the authored 3-stroke arrow in brand orange.",
+      "Shadow-board dashed outlines (#4a3322) for tools that are not built yet.",
+      "One hover motion: the card lifts 4 px off its peg in 160 ms; the peg stays. Digit readouts tick 5 px on change. Nothing else animates."
+    ],
+    "rules": [
+      { "name": "The Three Filaments Rule", "body": "A card is orange, teal or PLA white. There is no fourth card colour; a new tool picks one of the three in tools.js and inherits that hue's ink tints and relief recipe.", "section": "colors" },
+      { "name": "The Tinted Ink Rule", "body": "Secondary text on a card is an ink tint of the card's own hue (orange-ink, teal-ink, white-ink-2). Gray text never appears on a swatch.", "section": "colors" },
+      { "name": "The Black Tab Rule", "body": "The primary action on a card is a near-black (ink) tab, never an orange button. Orange is a material the card is made of, not a call-to-action colour.", "section": "colors" },
+      { "name": "The Relief Rule", "body": "A tool name or section title on a card is raised, never flat. Use the hue's recipe: orange face with two extrusion steps (#a4430f, #8e3a0c) and a 3/6/7 cast shadow; teal light face with one step; ink with a white up-left edge. Unlit labels in shadow outlines get no relief at all.", "section": "typography" },
+      { "name": "The Label Is A Label Rule", "body": "Uppercase small type exists only as a form label, a dl term, or a shadow-outline name. It never introduces a heading as a kicker or eyebrow.", "section": "typography" },
+      { "name": "The One Wordmark Rule", "body": "Space Grotesk appears only in the pinned brand's wordmark (26 px / 22 px). It is never used for headings, labels or body.", "section": "typography" },
+      { "name": "The Peg Stays Rule", "body": "Hover lifts the card (translateY(-4px), 160 ms cubic-bezier(0.23,1,0.32,1), deeper shadow); the peg and the hole do not move. Under prefers-reduced-motion the lift is removed entirely.", "section": "elevation" },
+      { "name": "The Lit Scene Rule", "body": "Shadows always fall downward with no horizontal offset on cards; raised type is lit from above-left. Nothing glows, nothing is elevated by colour alone.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do hang every live tool as a swatch card on a peg with a punched hole, in one of the three filaments, with its name in that hue's relief recipe and a black tab as its only action.",
+      "Do show an unbuilt tool as a 4 px dashed hole-shade outline on an empty peg, labelled in unlit uppercase, with no link and no badge.",
+      "Do colour secondary text with the card's ink tint (orange-ink / orange-ink-soft, teal-ink, white-ink-2) and keep large-only tints (orange-ink-soft) at 20 px / 600 or larger.",
+      "Do keep the hub pinned to light (color-scheme: light, meta theme-color #a47a52); use the dimmed board only on tool pages that honour the OS theme.",
+      "Do set millimetre readouts as fixed two-digit tiles with tabular numerals and a transform-only tick; never let a changing value reflow its neighbours.",
+      "Do carry the board ground, the three swatch materials, the relief recipes, the black tab and the shared tokens into tool pages, then tighten: 40 px controls, 16 px radius panels, the 4-64 px spacing scale, viewport first and controls beside it.",
+      "Do draw icons as stroked inline SVG (2 px, round caps) in currentColor; the tab arrow is 3 px to match 800-weight stems."
+    ],
+    "donts": [
+      "Don't open any surface with a headline, subline and button stacked over a card grid; the hub's first viewport is the board with the live object on a card.",
+      "Don't use orange as a button colour; the primary action on a card is the ink tab. (Tool-page btn-primary is the one exception, in shared tokens, for in-app controls on the neutral ground.)",
+      "Don't put gray text on a swatch, and don't put a fourth card colour on the board.",
+      "Don't add hover motion beyond the 4 px lift, or any ambient animation; the live 3D object and the digit tick are the only other things that move.",
+      "Don't write a \"coming soon\" pill, a greyed-out card, or a disabled tab for a tool that is not built; the dashed outline is the whole statement.",
+      "Don't use Space Grotesk anywhere but the wordmark, or any system display face; load only the self-hosted Barlow, Barlow Semi Condensed and Space Grotesk files.",
+      "Don't add uppercase kickers or eyebrows above headings; uppercase small type is a control label, a dl term, or a shadow-outline name."
+    ]
+  }
+}
