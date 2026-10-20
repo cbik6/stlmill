@@ -28,7 +28,7 @@ import { computeLayout } from './outline.js';
 import { resolveHeights, buildBody, buildCapParts, buildReferenceSwitchGeometry, triangleCount } from './solids.js';
 
 export { exportThreeMF, exportStlZip, layoutForPrint } from './export.js';
-export { buildSocketCoupons, SOCKET_COUPONS, socketPolygons } from './solids.js';
+export { buildSocketCoupons, SOCKET_COUPONS, socketPolygons, LABEL, GLYPHS_5X7, labelPolygons, labelPixelSize, couponMaxSocketRadius } from './solids.js';
 import { buildSocketCoupons as _buildSocketCoupons } from './solids.js';
 import { exportThreeMF as _exportThreeMF } from './export.js';
 

@@ -592,16 +592,41 @@ console.log('\n== socket coupons');
   check(coupons.length === 6, 'six coupons');
   const names = coupons.map((p) => p.name);
   check(names.join('|') === 'A straight 4.1|B straight 4.3|C tapered 4.6-4.1|D tapered 4.8-4.2|E round 5.0|F round 5.4', `coupon names (${names.join('|')})`);
+  const { LABEL, labelPixelSize, couponMaxSocketRadius } = await import('./index.js');
+  const D = 18; // default coupon diameter
+  const maxR = couponMaxSocketRadius();
+  const pixel = labelPixelSize(D, maxR);
+  check(Math.abs(pixel - 0.7) < 1e-9, `default coupons use the 0.7 mm pixel cap (got ${pixel})`);
+  check(Math.abs(labelPixelSize(14, maxR) - 0.4) < 1e-9, `14 mm pucks would get 0.4 mm pixels (got ${labelPixelSize(14, maxR)})`);
+  check(labelPixelSize(8, maxR) === 0, 'too-small puck -> no label');
+  const labelX = -(maxR + LABEL.clearance + (5 * pixel) / 2);
+  const px = (col, row) => ({ x: labelX - (5 * pixel) / 2 + (col + 0.5) * pixel, y: (7 * pixel) / 2 - (row + 0.5) * pixel });
   for (const p of coupons) {
     const bb = p.geometry.boundingBox;
     check(openEdgeCount(p.geometry) === 0, `${p.name}: watertight`);
-    check(Math.abs(bb.max.x - bb.min.x - 14) < 0.05 && Math.abs(bb.max.y - bb.min.y - 14) < 0.05 && bb.min.z === 0 && Math.abs(bb.max.z - 6) < 1e-6, `${p.name}: 14 x 14 x 6 on z = 0`);
+    check(Math.abs(bb.max.x - bb.min.x - D) < 0.05 && Math.abs(bb.max.y - bb.min.y - D) < 0.05 && bb.min.z === 0 && Math.abs(bb.max.z - 6.6) < 1e-6, `${p.name}: ${D} x ${D} on z = 0, max z 6.6 (label)`);
     const hits = hitsAlongAxis(p.geometry, 0, 0);
     check(hits.length === 2 && Math.abs(hits[0]) < 1e-6 && Math.abs(hits[1] - 2) < 1e-6, `${p.name}: socket opens UP, ceiling at z = 2 (hits ${hits.map((z) => z.toFixed(2)).join(', ')})`);
+    // letter: every glyph has its column-0 pixel set on row 3 -> solid at 6.6; A/B counters are open -> 6.0
+    const solid = px(0, 3);
+    const hs = hitsAlongAxis(p.geometry, solid.x, solid.y);
+    check(hs.length && Math.abs(hs[hs.length - 1] - 6.6) < 1e-6, `${p.name}: raised letter at (${solid.x.toFixed(2)}, ${solid.y.toFixed(2)}) reaches z 6.6 (hits ${hs.map((z) => z.toFixed(2)).join(', ')})`);
+    const letter = p.name[0];
+    for (const [col, row] of letter === 'A' ? [[2, 1.5]] : letter === 'B' ? [[2, 1.5], [2, 4.5]] : []) {
+      const c = px(col, row);
+      const hc = hitsAlongAxis(p.geometry, c.x, c.y);
+      check(hc.length && Math.abs(hc[hc.length - 1] - 6) < 1e-6, `${p.name}: counter at (${c.x.toFixed(2)}, ${c.y.toFixed(2)}) is a real hole (top hit ${hc[hc.length - 1]})`);
+    }
+    // clearance: letter vertices >= 1 mm from the socket opening and inside the rim by >= 1 mm
+    const pos = p.geometry.attributes.position.array;
+    let minR = Infinity, maxR2 = 0;
+    for (let i = 0; i < pos.length; i += 3) if (Math.abs(pos[i + 2] - 6.6) < 1e-6) { const r = Math.hypot(pos[i], pos[i + 1]); minR = Math.min(minR, r); maxR2 = Math.max(maxR2, r); }
+    check(minR >= maxR + LABEL.clearance - 1e-6 && maxR2 <= D / 2 - LABEL.clearance + 1e-6, `${p.name}: label clearance (r ${minR.toFixed(2)}..${maxR2.toFixed(2)}, socket r ${maxR.toFixed(2)}, rim ${D / 2})`);
   }
+  console.log(`  label: ${pixel} mm pixels -> ${(5 * pixel).toFixed(2)} x ${(7 * pixel).toFixed(2)} mm glyph, ${LABEL.height} mm raised, centred at x = ${labelX.toFixed(2)}`);
   const laid = layoutForPrint(coupons).parts;
   const xs = laid.map((p) => (p.geometry.boundingBox.min.x + p.geometry.boundingBox.max.x) / 2);
-  check(xs.every((x, i) => i === 0 || Math.abs(x - xs[i - 1] - 22) < 1e-6), `coupons on a 22 mm pitch (${xs.map((x) => x.toFixed(1)).join(', ')})`);
+  check(xs.every((x, i) => i === 0 || Math.abs(x - xs[i - 1] - 26) < 1e-6), `coupons on a 26 mm pitch (${xs.map((x) => x.toFixed(1)).join(', ')})`);
   const blob = await exportSocketCoupons();
   const zip = await JSZip.loadAsync(await blob.arrayBuffer());
   const xml = await zip.file('3D/3dmodel.model').async('string');

@@ -21,6 +21,7 @@ import { Brush, Evaluator, SUBTRACTION, ADDITION, INTERSECTION } from 'three-bvh
 import { pointsToShape, circlePoints } from './outline.js';
 import { repairMesh } from './repair.js';
 import { ShellBuilder, cleanPolygon, polygonContains, squarePolygon } from './shell.js';
+import { traceBitmap } from './trace.js';
 
 // Simplified Cherry MX reference dimensions (mm), plate-mount
 export const MX = {
@@ -312,9 +313,9 @@ export function socketPolygons(sw) {
  * (zCeil > zOpen: socket going up from a bottom face, as in the cap; zCeil < zOpen: socket going
  * down from a top face, as in the coupons).
  */
-export function addSocket(b, outer, zOpen, zCeil, socket) {
+export function addSocket(b, outer, zOpen, zCeil, socket, extraHoles = []) {
   const up = zCeil < zOpen; // socket opens on a top face
-  b.face(outer, [socket.opening], zOpen, up);
+  b.face(outer, [socket.opening, ...extraHoles], zOpen, up);
   b.face(socket.ceiling, [], zCeil, up);
   if (up) b.loft(socket.ceiling, socket.opening, zCeil, zOpen, true);
   else b.loft(socket.opening, socket.ceiling, zOpen, zCeil, true);
@@ -446,17 +447,97 @@ export const SOCKET_COUPONS = [
  * exporters keep this layout and the Assembly View shows the same row.
  * Returns { parts: [{ name, geometry, color, print }] }.
  */
-export function buildSocketCoupons({ diameter = 14, height = 6, depth = 4.0, gap = 8, color = '#f5f5f5' } = {}) {
+// 5 x 7 bitmaps (top row first) for the coupon labels
+export const GLYPHS_5X7 = {
+  A: ['01110', '10001', '10001', '11111', '10001', '10001', '10001'],
+  B: ['11110', '10001', '10001', '11110', '10001', '10001', '11110'],
+  C: ['01110', '10001', '10000', '10000', '10000', '10001', '01110'],
+  D: ['11110', '10001', '10001', '10001', '10001', '10001', '11110'],
+  E: ['11111', '10000', '10000', '11110', '10000', '10000', '11111'],
+  F: ['11111', '10000', '10000', '11110', '10000', '10000', '10000'],
+};
+export const LABEL = { maxPixel: 0.7, raster: 0.1, height: 0.6, clearance: 1.0 }; // glyph pixel cap (mm), raster cell (mm), emboss (mm), clearance (mm)
+
+/**
+ * Largest glyph pixel (mm) for a 5x7 letter placed on -X beside a socket of radius `socketR`
+ * on a puck of `diameter`, keeping LABEL.clearance to the socket opening and inside the rim,
+ * capped at LABEL.maxPixel and snapped down to the raster. The glyph is centred at
+ * x = -(socketR + clearance + 2.5 * pixel); its outer corners lie at r = (socketR + clearance + 5p, 3.5p).
+ */
+export function labelPixelSize(diameter, socketR, { maxPixel = LABEL.maxPixel, clearance = LABEL.clearance, raster = LABEL.raster } = {}) {
+  const a = socketR + clearance;
+  const r = diameter / 2 - clearance;
+  // (a + 5p)^2 + (3.5p)^2 <= r^2  ->  37.25 p^2 + 10 a p + (a^2 - r^2) <= 0
+  const disc = 100 * a * a - 4 * 37.25 * (a * a - r * r);
+  if (disc <= 0) return 0;
+  let p = (-10 * a + Math.sqrt(disc)) / (2 * 37.25);
+  p = Math.min(maxPixel, p);
+  p = Math.floor(p / raster + 1e-9) * raster;
+  return p > 0 ? +p.toFixed(6) : 0;
+}
+
+/**
+ * Polygons (mm, +Y up, readable from +Z) of a 5x7 glyph centred at (cx, cy): the bitmap is
+ * rasterized at LABEL.raster mm per cell (each glyph pixel = `pixel` mm) and traced with
+ * traceBitmap, so counters (A: 1, B: 2) come out as real holes. Returns [{ outer, holes }].
+ */
+export function labelPolygons(letter, cx = 0, cy = 0, pixel = LABEL.maxPixel) {
+  const rows = GLYPHS_5X7[letter];
+  if (!rows || !(pixel > 0)) return [];
+  const cell = Math.max(1, Math.round(pixel / LABEL.raster)); // raster cells per glyph pixel
+  const w = 5 * cell + 2;
+  const h = 7 * cell + 2;
+  const mask = new Uint8Array(w * h);
+  rows.forEach((row, r) => {
+    for (let c = 0; c < 5; c++) {
+      if (row[c] !== '1') continue;
+      for (let j = 0; j < cell; j++) {
+        const y = (6 - r) * cell + 1 + j; // bitmap top row -> highest y (mask is y-up)
+        for (let i = 0; i < cell; i++) mask[y * w + (c * cell + 1 + i)] = 1;
+      }
+    }
+  });
+  const shapes = traceBitmap(mask, w, h, { simplifyTolerance: 0.3, smoothIterations: 0, minArea: 2 });
+  const px = cell * LABEL.raster; // effective glyph pixel after raster snapping
+  const toMm = (p) => ({ x: (p.x - 1) * LABEL.raster - (5 * px) / 2 + cx, y: (p.y - 1) * LABEL.raster - (7 * px) / 2 + cy });
+  return shapes.map((s) => {
+    const pts = s.extractPoints(1);
+    return { outer: cleanPolygon(pts.shape.map(toMm)), holes: pts.holes.map((hh) => cleanPolygon(hh.map(toMm))) };
+  });
+}
+
+/** Widest socket opening radius across the coupon variants (the label keeps clear of this on every puck). */
+export function couponMaxSocketRadius() {
+  return Math.max(...SOCKET_COUPONS.map((v) => socketPolygons({ stemCrossWidth: 4.1, stemCrossThickness: 1.3, socketOpening: 4.6, roundDiameter: 5.0, ...v }).extent)) / 2;
+}
+
+export function buildSocketCoupons({ diameter = 18, height = 6, depth = 4.0, gap = 8, color = '#f5f5f5' } = {}) {
   const parts = [];
   const pitch = diameter + gap;
+  // label: largest glyph pixel (<= 0.7 mm) that stays 1 mm clear of the widest socket opening
+  // (F: r 2.7) and 1 mm inside the rim; same position on every puck so the row reads consistently
+  const maxSocketR = couponMaxSocketRadius();
+  const pixel = labelPixelSize(diameter, maxSocketR);
+  const labelX = -(maxSocketR + LABEL.clearance + (5 * pixel) / 2);
   SOCKET_COUPONS.forEach((variant, i) => {
     const sw = { stemCrossWidth: 4.1, stemCrossThickness: 1.3, socketOpening: 4.6, roundDiameter: 5.0, ...variant };
     const socket = socketPolygons(sw);
     const outer = cleanPolygon(circlePoints(diameter / 2, 64));
+    const glyphs = pixel > 0 ? labelPolygons(variant.label[0], labelX, 0, pixel) : [];
     const b = new ShellBuilder();
     b.face(outer, [], 0, false); // bottom (on the plate)
     b.wall(outer, 0, height, false); // puck wall
-    addSocket(b, outer, height, height - depth, socket); // top ring, socket walls, ceiling facing up
+    // top ring (with the letter outlines cut out), socket walls, ceiling facing up
+    addSocket(b, outer, height, height - depth, socket, glyphs.map((g) => g.outer));
+    const zTop = height + LABEL.height;
+    for (const g of glyphs) {
+      b.wall(g.outer, height, zTop, false); // letter side walls
+      b.face(g.outer, g.holes, zTop, true); // letter top
+      for (const hole of g.holes) {
+        b.wall(hole, height, zTop, true); // counter walls
+        b.face(hole, [], height, true); // counter floor (puck top inside the counter)
+      }
+    }
     const geometry = b.build();
     geometry.computeVertexNormals();
     geometry.computeBoundingBox();
