@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "jszip": "^3.10.2",
+    "manifold-3d": "^3.5.4",
     "three": "^0.186.1",
     "three-bvh-csg": "^0.0.18",
     "three-mesh-bvh": "^0.9.16"
