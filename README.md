@@ -36,7 +36,7 @@ npm run preview    # serve dist/ locally
 ```
 index.html              hub landing page
 clicker/index.html      a tool's page (one folder per tool)
-public/                 static assets copied as-is (favicon.svg, CNAME)
+public/                 static assets copied as-is (favicon.svg, logo/, fonts/)
 src/
   hub/                  landing page: tools.js (registry), main.js, hub.css
   shared/               design system shared by hub + tools
@@ -44,7 +44,6 @@ src/
     theme.js            initTheme() / toggleTheme() (localStorage 'stlmill-theme')
   clicker/              the Clicker tool's source
 vite.config.js          multi-page build; base './'
-.github/workflows/      GitHub Pages deploy
 ```
 
 Every tool imports `src/shared/base.css` and calls `initTheme()` from
@@ -86,23 +85,21 @@ All links use relative paths (`./clicker/`, `../`) so the build works both under
 
 ## Deploy
 
-Pushing to `main` runs `.github/workflows/deploy.yml`, which does `npm ci`,
-`npm run build`, and publishes `dist/` to GitHub Pages via
-`actions/deploy-pages`. In the repository settings, set **Pages → Source** to
-**GitHub Actions** once.
+The site is fully static: build with `npm run build` and serve `dist/`. Any
+static host works; the repo is connected to **Vercel** (framework preset: Vite,
+build `npm run build`, output `dist`), which deploys every push to `main` and
+gives preview URLs for branches.
+
+Equivalent free options, same settings: Cloudflare Pages, Netlify, GitHub Pages
+(public repo; needs a Pages workflow and **Settings → Pages → Source: GitHub
+Actions**).
 
 ### Custom domain
 
-1. Create `public/CNAME` containing just the domain, e.g. `stlmill.com`.
-   Vite copies it into `dist/` on every build so Pages keeps the domain.
-2. At your DNS provider, point the apex at GitHub Pages
-   (`A` records `185.199.108.153`, `.109.153`, `.110.153`, `.111.153`) and add a
-   `CNAME` for `www` → `cbik6.github.io`.
-3. In **Settings → Pages**, enter the custom domain and enable **Enforce HTTPS**
-   once the certificate is issued.
-
-Because `base` is `'./'`, no config change is needed when moving between the
-`github.io` subpath and the custom domain.
+Add the domain in the host's dashboard and create the DNS records it tells you
+to (an `A`/`ALIAS` for the apex and a `CNAME` for `www`); HTTPS is issued
+automatically. Because `base` is `'./'`, no config change is needed when moving
+between a subpath (e.g. `user.github.io/repo/`) and a domain root.
 
 ## License
 
