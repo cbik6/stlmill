@@ -22,10 +22,17 @@
 //   design long side = (cap long side - 2*margin) * fill/100, clipped to the cap by CSG later.
 
 import * as THREE from 'three';
-import { rasterizeShapes, rasterizePolygonsEvenOdd, dilateMask, convexHull } from './raster.js';
+import { rasterizeShapes, rasterizePolygonsEvenOdd, dilateMask, convexHull, squaredDistanceToValue, maskWithinDistance } from './raster.js';
 import { traceBitmap, shapesBBox } from './trace.js';
 
 const WORK_PX = 1000; // px across the base's long side for the outline raster
+
+// Housing pocket cut into the cap's underside (see solids.js): corner radius and the minimum cap
+// wall around it. The cap's minimum envelope is the pocket offset by wall + ENVELOPE_PAD so every
+// traced/smoothed cap outline still holds the pocket with the full wall.
+export const CAP_POCKET_CORNER = 1.5;
+export const CAP_POCKET_WALL = 1.2;
+const ENVELOPE_PAD = 0.3; // covers raster quantisation + contour smoothing losses
 
 // Printed outlines (body / recess / cap walls) get stronger smoothing than the design relief:
 // a 7-px moving average on the raw pixel loop (kills 1-px notches that RDP would keep as
@@ -208,8 +215,13 @@ export function computeLayout(spec, params, warnings = []) {
     designLongUnits = Math.max(b1.maxX - b1.minX, b1.maxY - b1.minY);
   }
 
-  const envelopeSide = sw.pocket + 2 * fit.switchTolerance;
-  const envelopeHalfDiag = (envelopeSide / 2) * Math.SQRT2;
+  // The cap must enclose the switch flange envelope AND its own housing pocket (flange + clearance)
+  // with CAP_POCKET_WALL of material around it: envelope = pocket offset by wall + pad (a true
+  // offset of the rounded square, so the clearance is uniform along the sides and corners).
+  const pocketOffset = CAP_POCKET_WALL + ENVELOPE_PAD;
+  const envelopeSide = Math.max(sw.pocket + 2 * fit.switchTolerance, sw.pocket + 2 * clearance + 2 * pocketOffset);
+  const envelopeCorner = Math.max(Math.min(2.5, base.cornerRadius), CAP_POCKET_CORNER + pocketOffset);
+  const envelopeHalfDiag = (envelopeSide / 2 - envelopeCorner) * Math.SQRT2 + envelopeCorner;
 
   let designLong;
   let capLong;
@@ -239,7 +251,7 @@ export function computeLayout(spec, params, warnings = []) {
 
     const designMask = rasterizeShapes(transformShapes(designShapes, toPx), W, H);
     let capMask = dilateMask(designMask, W, H, margin * k);
-    const envPts = roundedRectPoints(envelopeSide / 2, envelopeSide / 2, Math.min(2.5, base.cornerRadius), 8).map(toPx);
+    const envPts = roundedRectPoints(envelopeSide / 2, envelopeSide / 2, envelopeCorner, 8).map(toPx);
     rasterizePolygonsEvenOdd([envPts], W, H, capMask);
 
     let capTraced = traceBitmap(capMask, W, H, OUTLINE_TRACE);
@@ -249,8 +261,10 @@ export function computeLayout(spec, params, warnings = []) {
       rasterizePolygonsEvenOdd([hull], W, H, capMask);
       capTraced = traceBitmap(capMask, W, H, OUTLINE_TRACE);
     }
-    const recessMask = dilateMask(capMask, W, H, clearance * k);
-    const bodyMask = dilateMask(capMask, W, H, (wall + clearance) * k);
+    // recess and body are both dilations of the cap: one distance field, two thresholds
+    const capDist = squaredDistanceToValue(capMask, W, H, 1);
+    const recessMask = maskWithinDistance(capDist, clearance * k);
+    const bodyMask = maskWithinDistance(capDist, (wall + clearance) * k);
     const recessTraced = traceBitmap(recessMask, W, H, OUTLINE_TRACE);
     const bodyTraced = traceBitmap(bodyMask, W, H, OUTLINE_TRACE);
 
@@ -290,7 +304,7 @@ export function computeLayout(spec, params, warnings = []) {
   const bodyPoints = bodyShape.getPoints(1);
   // The recess (cap + clearance) must contain the switch envelope square so the upper
   // housing clears the body: test the envelope's (slightly shrunk) rounded corners.
-  const envTest = roundedRectPoints(envelopeSide / 2 - 0.15, envelopeSide / 2 - 0.15, Math.min(2.5, base.cornerRadius), 6);
+  const envTest = roundedRectPoints(envelopeSide / 2 - 0.15, envelopeSide / 2 - 0.15, envelopeCorner, 6);
   if (!envTest.every((p) => pointInPolygon(p, capPoints))) {
     const needCircle = 2 * (envelopeHalfDiag + wall + clearance);
     warnings.push(

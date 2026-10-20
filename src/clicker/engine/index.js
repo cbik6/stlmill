@@ -9,11 +9,12 @@
 // Part  = { name: 'body'|'cap'|'design', geometry: THREE.BufferGeometry (mm, Z up), color: '#rrggbb' }
 //   body   : rests on z = 0 with a solid floor, centred on XY (keychain ring, when enabled, is unioned in).
 //            The switch drops in from the top: flange on the plate, lower housing in a closed cavity below.
-//   cap    : underside plane z = 0, top face z = cap.thickness; the stem socket is cut UP into the
-//            slab from the underside (ceiling at z = stemHeight). Nothing extends below z = 0 unless
-//            the slab is too thin for the socket, in which case a boss hangs to z = -assembly.bossBelow.
-//            The UI should place it at z = assembly.capZ in the body frame (seated on the switch:
-//            socket bottoming on the stem tip, or boss on the housing top).
+//   cap    : underside plane z = 0, top face z = cap.thickness. Like an MX keycap: a rounded-square
+//            housing pocket (switch.pocket + 2*clearance, depth switch.travel) is cut up from the
+//            underside, the stem boss (switch.bossDiameter) hangs from the pocket ceiling down to
+//            z = 0 (bottom flush, nothing below the cap), and the socket is cut up into the boss
+//            (ceiling at z = stemHeight). The UI should place it at z = assembly.capZ in the body
+//            frame (boss bottom on the housing top; the housing rises into the pocket when pressed).
 //   design : 'raised'  -> relief standing on the cap top (z = thickness .. thickness+designHeight)
 //            'inlay'   -> filler exactly filling a pocket in the cap top (z = thickness-designHeight .. thickness)
 //            'engraved'-> no design part (pocket only). Same frame as the cap in both cases.
@@ -45,20 +46,23 @@ export async function exportSocketCoupons({ name = 'clicker-socket-coupons', ...
 }
 export { makeDesignFromText, makeDesignFromSvg, makeDesignFromImage, makeDesignFromShapes } from './design.js';
 export { traceBitmap } from './trace.js';
-export { MX } from './solids.js';
+export { MX, resolveCapSocket } from './solids.js';
+export { CAP_POCKET_WALL, CAP_POCKET_CORNER } from './outline.js';
 
 export const DEFAULT_PARAMS = {
   design: { spec: null, fill: 100 /* % of the available area the design fills */, rotation: 0 /* deg CCW */ },
   base: { style: 'outline' /* 'outline'|'circle'|'square'|'hexagon' */, size: 35 /* longest side, mm */, margin: 2.5 /* padding between design and cap edge */, cornerRadius: 4 },
-  // cap 5.2 thick: the 3.4 mm socket is cut up into the slab from the underside, the 0.8 mm
-  // inlay/engraving pocket comes down from the top, and >= 1.0 mm of cap stays between them.
-  cap: { thickness: 5.2, designHeight: 0.8, designMode: 'inlay' /* 'inlay'|'raised'|'engraved' */ },
-  // Seat: the socket bottoms out on the MX stem tip (plate top + 6.6 housing + 3.6 stem), so the
-  // cap underside sits at 10.2 - 3.4 = 6.8 mm above the plate (0.2 mm above the housing, no boss).
-  // rimHeight 7.2 = seat + 0.4 (cap underside 0.4 mm below the rim, guided by the wall).
-  // height 'auto' = 1.5 floor + cavity (5.5 'clipped' / 8.5 'keep') + 1.5 plate + 7.2 rim
-  //   -> 15.7 mm with the defaults (18.7 with pins kept). A number overrides (raised if too short).
-  body: { height: 'auto', rimHeight: 7.2, wall: 2.5 },
+  // cap 6.0 thick, built like a real MX keycap: a 16.2 mm rounded-square housing pocket 4.2 deep
+  // (switch travel) is cut up from the underside, a stem boss hangs from its ceiling down to the
+  // underside plane, the 3.6 mm socket is cut up into the boss, the 0.8 mm inlay/engraving pocket
+  // comes down from the top, and 1.0 mm of cap stays above the housing pocket (6.0 = 4.2 + 1.0 + 0.8).
+  cap: { thickness: 6.0, designHeight: 0.8, designMode: 'inlay' /* 'inlay'|'raised'|'engraved' */ },
+  // Seat = 6.6 + max(0, 3.6 - socket depth) = 6.6: the boss bottom (underside plane) sits on the
+  // MX upper housing top with the stem tip at the socket ceiling; pressing drives the housing
+  // 4.2 mm up into the pocket. rimHeight 7.0 = seat + 0.4 (cap underside 0.4 mm below the rim).
+  // height 'auto' = 1.5 floor + cavity (5.5 'clipped' / 8.5 'keep') + 1.5 plate + 7.0 rim
+  //   -> 15.5 mm with the defaults (18.5 with pins kept). A number overrides (raised if too short).
+  body: { height: 'auto', rimHeight: 7.0, wall: 2.5 },
   switch: {
     cutout: 14 /* nominal plate cutout, no tolerance (clips grip it) */,
     pocket: 15.6 /* switch FLANGE width above the plate; the cap recess must clear it */,
@@ -66,14 +70,17 @@ export const DEFAULT_PARAMS = {
     pins: 'clipped' /* 'clipped' (pins snipped flush, default) | 'keep' (deeper cavity for the pins) */,
     cavityDepth: 'auto' /* 'auto' = 5.5 ('clipped') / 8.5 ('keep') from the plate underside; a number overrides */,
     plateThickness: 1.5,
-    // stem socket (measured on real printed caps): a tapered cross grips best
+    // stem socket: copy of the measured "ghost" cap that fits the user's switches - a tapered
+    // cross 6.0 wide at the underside opening narrowing to 4.6 at the ceiling, 4.0 deep; the arm
+    // thickness scales with the same ratio (1.3 at the ceiling, ~1.7 at the opening)
     socketMode: 'tapered' /* 'tapered'|'cross'|'round' */,
-    stemCrossWidth: 4.1 /* cross width at the socket ceiling */,
-    stemCrossThickness: 1.3,
-    socketOpening: 4.6 /* cross width at the opening ('tapered' only) */,
+    stemCrossWidth: 4.6 /* cross width at the socket ceiling */,
+    stemCrossThickness: 1.3 /* arm thickness at the ceiling */,
+    socketOpening: 6.0 /* cross width at the underside opening ('tapered' only) */,
     roundDiameter: 5.0 /* hole diameter ('round' only, glue fit) */,
-    stemOuterDiameter: 7.0 /* boss diameter, used only when the socket is deeper than the slab allows */,
-    stemHeight: 3.4 /* socket depth, cut up into the cap slab */,
+    stemHeight: 3.6 /* socket depth = full MX stem; cut up into the boss (and slab if deeper) */,
+    travel: 4.2 /* housing pocket depth in the cap underside = MX travel 4.0 + 0.2 */,
+    bossDiameter: 6.4 /* stem boss hanging from the pocket ceiling; 0.2 mm wall around the 6.0 opening at the bottom (7.0 prints with a 0.4 mm wall if the switch collar allows) */,
   },
   keychain: { enabled: false, outerRadius: 4.5, innerRadius: 2.2, angle: 90 /* deg around the base; 90 = top (+Y) */ },
   fit: { clearance: 0.3 /* cap-to-recess gap per side */, switchTolerance: 0.15 /* added per side to the pocket */ },
@@ -181,7 +188,10 @@ export async function buildClicker(userParams = {}) {
       seat: heights.seat,
       bossBelow: heights.bossBelow,
       socketCeilingZ: heights.socketCeilingZ,
-      capThickness: Math.max(1.2, params.cap.thickness),
+      travel: heights.travel,
+      bossDiameter: heights.bossDiameter,
+      pocketSide: heights.pocketSide,
+      capThickness: heights.capThickness,
       bodyHeight: heights.height,
       engraveDepth,
       capBounds,

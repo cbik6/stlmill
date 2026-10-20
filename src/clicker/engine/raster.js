@@ -129,7 +129,12 @@ function edt1d(f, n, d, v, z) {
   }
 }
 
-/** Squared distance (in px) from each pixel to the nearest pixel whose mask value === `value`. */
+/**
+ * Squared distance (in px) from each pixel to the nearest pixel whose mask value === `value`.
+ * (A column-blocked variant was benchmarked and is ~15% slower under V8; the plain strided
+ * column pass stays. One EDT on a 1064 px grid costs ~40-130 ms depending on machine load, so
+ * callers that need several dilations of the same mask should threshold one field instead.)
+ */
 export function squaredDistanceToValue(mask, w, h, value) {
   const g = new Float64Array(w * h);
   for (let p = 0; p < w * h; p++) g[p] = mask[p] === value ? 0 : INF;
@@ -150,6 +155,14 @@ export function squaredDistanceToValue(mask, w, h, value) {
     for (let x = 0; x < w; x++) g[row + x] = d[x];
   }
   return g;
+}
+
+/** Threshold a squared-distance field into a mask: 1 where distance <= r. */
+export function maskWithinDistance(dist2, r) {
+  const out = new Uint8Array(dist2.length);
+  const r2 = r * r;
+  for (let p = 0; p < dist2.length; p++) out[p] = dist2[p] <= r2 ? 1 : 0;
+  return out;
 }
 
 /** Morphological dilation by a disc of radius r (px). */

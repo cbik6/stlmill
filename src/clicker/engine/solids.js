@@ -18,7 +18,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Brush, Evaluator, SUBTRACTION, ADDITION, INTERSECTION } from 'three-bvh-csg';
-import { pointsToShape, circlePoints } from './outline.js';
+import { pointsToShape, circlePoints, roundedRectPoints, CAP_POCKET_WALL, CAP_POCKET_CORNER } from './outline.js';
 import { repairMesh } from './repair.js';
 import { ShellBuilder, cleanPolygon, polygonContains, squarePolygon } from './shell.js';
 import { traceBitmap } from './trace.js';
@@ -108,25 +108,40 @@ export function finalize(geometry, name, warnings) {
 }
 
 /**
- * Cap socket arithmetic (cap frame, z = 0 is the cap's underside plane).
- * The socket is cut UP into the cap slab from the underside; at least 1.0 mm of cap must remain
- * between the socket ceiling and the design pocket floor (or the top, for 'raised'). Only when the
- * socket is deeper than that allows does the remainder hang below the cap as a boss.
- * Returns { t, s, dPocket, sMax, bossBelow, openZ, ceilingZ }.
+ * Cap underside arithmetic (cap frame, z = 0 is the cap's underside plane = boss bottom).
+ * Like a real MX keycap: a rounded-square HOUSING POCKET (switch.pocket + 2*clearance, depth
+ * switch.travel) is cut up from the underside so the housing rises into the cap when pressed; a
+ * STEM BOSS (switch.bossDiameter) hangs from the pocket ceiling down to z = 0; the socket is cut
+ * up into the boss (and on into the slab if deeper than the pocket). At least 1.0 mm of cap stays
+ * between pocket ceiling / socket ceiling and the design pocket floor; the cap is thickened (with
+ * a warning) when it is too thin. Returns
+ *   { t, s, dPocket, travel, pocketSide, bossD, ceilingZ, tMin, bossBelow: 0 }.
  */
 export function resolveCapSocket(params, warnings = null) {
   const { cap } = params;
   const sw = params.switch;
-  const t = Math.max(1.2, cap.thickness);
   const s = Math.max(0.5, sw.stemHeight); // socket depth
+  const travel = Math.max(0, sw.travel);
+  const pocketSide = sw.pocket + 2 * Math.max(0, params.fit.clearance);
   const pocketed = cap.designMode === 'engraved' || cap.designMode === 'inlay';
-  const dPocket = pocketed && cap.designHeight > 0 ? Math.min(cap.designHeight, t - 0.8) : 0;
-  const sMax = t - dPocket - 1.0; // deepest socket keeping 1.0 mm of cap above its ceiling
-  const bossBelow = Math.max(0, s - sMax);
-  if (bossBelow > 0 && warnings) {
-    warnings.push(`Cap is too thin for a ${s} mm socket${dPocket ? ` under a ${dPocket} mm design pocket` : ''}: a ${bossBelow.toFixed(1)} mm boss hangs below the cap (thicken the cap to ${(s + dPocket + 1).toFixed(1)} mm to avoid it).`);
+  const dWanted = pocketed && cap.designHeight > 0 ? cap.designHeight : 0;
+  const tMin = Math.max(travel, s) + 1.0 + dWanted;
+  let t = Math.max(1.2, cap.thickness);
+  if (t < tMin - 1e-9) {
+    if (warnings) warnings.push(`Cap thickness ${t} mm is too thin for the ${travel} mm housing pocket / ${s} mm socket plus ${dWanted ? `${dWanted} mm design pocket and ` : ''}a 1.0 mm floor; raised to ${tMin.toFixed(1)} mm.`);
+    t = tMin;
   }
-  return { t, s, dPocket, sMax, bossBelow, openZ: -bossBelow, ceilingZ: s - bossBelow };
+  const dPocket = dWanted ? Math.min(dWanted, t - 0.8) : 0;
+  // boss must enclose the socket opening with a sliver of wall (auto-widened only when it cannot)
+  const socket = socketPolygons(sw);
+  const cornerR = Math.max(...socket.opening.map((p) => Math.hypot(p.x, p.y)));
+  let bossD = Math.max(1, sw.bossDiameter);
+  const minBoss = 2 * (cornerR / Math.cos(Math.PI / 48) + 0.05);
+  if (bossD < minBoss) {
+    if (warnings) warnings.push(`Stem boss widened to ${minBoss.toFixed(2)} mm so the ${socket.extent} mm socket opening stays inside it.`);
+    bossD = minBoss;
+  }
+  return { t, s, dPocket, travel, pocketSide, bossD, ceilingZ: s, tMin, bossBelow: 0 };
 }
 
 /** Cavity depth: a number, or 'auto' derived from switch.pins ('keep' 8.5 / 'clipped' 5.5). */
@@ -166,12 +181,11 @@ export function resolveHeights(params, warnings) {
     warnings.push(`Switch cavity depth clamped to ${cavityDepth.toFixed(1)} mm to keep a ${FLOOR_MIN} mm floor.`);
   }
   const cavityBottomZ = plateBottomZ - cavityDepth;
-  // Seated cap (cap frame origin = underside plane): the socket, cut up into the slab, bottoms
-  // out on the stem tip (stem top at plateTop + 6.6 + 3.6), unless a boss hangs below the slab
-  // and rests on the housing top first. With defaults (3.4 socket, no boss) the underside sits
-  // 0.2 mm above the housing.
+  // Seated cap (cap frame origin = underside plane = boss bottom): the boss bottom sits at the
+  // housing top (the housing itself rises into the cap's pocket when pressed), and the socket
+  // ceiling sits on the stem tip when the socket is shallower than the 3.6 mm stem.
   const sock = resolveCapSocket(params);
-  const seat = Math.max(MX.UPPER_HOUSING + sock.bossBelow, MX.UPPER_HOUSING + MX.STEM_HEIGHT - sock.s);
+  const seat = MX.UPPER_HOUSING + Math.max(0, MX.STEM_HEIGHT - sock.s);
   const capZ = plateTopZ + seat; // z of the cap's underside plane in the body frame
   const capTop = capZ + sock.t;
   if (capZ > H + 0.05) {
@@ -179,7 +193,10 @@ export function resolveHeights(params, warnings) {
   } else if (capTop < H - 0.05) {
     warnings.push(`Cap top ends up ${(H - capTop).toFixed(1)} mm below the body rim and cannot be pressed comfortably; reduce rimHeight below ${(seat + sock.t).toFixed(1)} mm or thicken the cap.`);
   }
-  return { height: H, rim, plate, cavityDepth, floor: cavityBottomZ, plateTopZ, plateBottomZ, cavityBottomZ, capZ, seat, bossBelow: sock.bossBelow, socketCeilingZ: sock.ceilingZ };
+  return {
+    height: H, rim, plate, cavityDepth, floor: cavityBottomZ, plateTopZ, plateBottomZ, cavityBottomZ, capZ, seat,
+    bossBelow: 0, socketCeilingZ: sock.ceilingZ, travel: sock.travel, bossDiameter: sock.bossD, pocketSide: sock.pocketSide, capThickness: sock.t,
+  };
 }
 
 /**
@@ -377,17 +394,19 @@ export function buildCapParts(layout, params, warnings) {
   const s = sock.s; // socket depth
   const P = cleanPolygon(layout.capPoints);
   const socket = socketPolygons(sw);
-  // Boss (only when the socket does not fit in the slab): keep a 1 mm wall around the opening
-  let bossD = sw.stemOuterDiameter;
-  const minBoss = socket.extent + 2.0;
-  if (sock.bossBelow > 0 && bossD < minBoss) {
-    bossD = minBoss;
-    warnings.push(`Stem boss widened to ${bossD.toFixed(1)} mm to keep a 1 mm wall around the ${socket.mode} socket.`);
+  const S = cleanPolygon(circlePoints(sock.bossD / 2, 48)); // stem boss
+  const pocket = cleanPolygon(roundedRectPoints(sock.pocketSide / 2, sock.pocketSide / 2, CAP_POCKET_CORNER, 10)); // housing pocket
+  // Housing pocket needs CAP_POCKET_WALL of cap around it; thin wall -> warning, no room -> no pocket
+  let hasPocket = sock.travel > 0.05 && polygonContains(P, pocket, CAP_POCKET_WALL);
+  if (!hasPocket && sock.travel > 0.05) {
+    if (polygonContains(P, pocket, 0.4)) {
+      hasPocket = true;
+      warnings.push(`Cap wall around the housing pocket is under ${CAP_POCKET_WALL} mm; enlarge the base or margin.`);
+    } else {
+      warnings.push(`Cap outline is too small for the ${sock.pocketSide.toFixed(1)} mm housing pocket; the cap has no pocket and will rest on the switch housing (no travel). Enlarge the base.`);
+    }
   }
-  const S = cleanPolygon(circlePoints(bossD / 2, 48));
-  const stemFits = sock.bossBelow > 0
-    ? polygonContains(P, S, 0.05) && polygonContains(S, socket.opening, 0.05)
-    : polygonContains(P, socket.opening, 1.0);
+  const stemFits = polygonContains(S, socket.opening, 0.04) && (hasPocket ? polygonContains(pocket, S, 0.5) : polygonContains(P, S, 0.5));
 
   // design polygons (cleaned once; shared by faces and walls)
   const designPolys = layout.designShapes.map((sh) => {
@@ -412,12 +431,14 @@ export function buildCapParts(layout, params, warnings) {
     // the slab is too thin), plus the engraving when the design is inside the cap
     const b = new ShellBuilder();
     b.wall(P, 0, t, false); // cap side wall
-    if (sock.bossBelow > 0) {
-      b.face(P, [S], 0, false); // cap underside around the boss
-      b.wall(S, sock.openZ, 0, false); // boss outer wall
-      addSocket(b, S, sock.openZ, sock.ceilingZ, socket); // boss bottom ring, socket walls, ceiling
+    if (hasPocket) {
+      b.face(P, [pocket], 0, false); // underside ring around the housing pocket
+      b.wall(pocket, 0, sock.travel, true); // pocket wall
+      b.face(pocket, [S], sock.travel, false); // pocket ceiling (faces down) around the boss
+      b.wall(S, 0, sock.travel, false); // boss outer wall, from the ceiling down to z = 0
+      addSocket(b, S, 0, sock.ceilingZ, socket); // boss bottom ring (flush with z = 0), socket walls, socket ceiling
     } else {
-      addSocket(b, P, 0, sock.ceilingZ, socket); // underside ring, socket walls (lofted when tapered), ceiling at z = stemHeight
+      addSocket(b, P, 0, sock.ceilingZ, socket); // no pocket: socket straight up into the slab
     }
     if (engraveInShell) {
       const zf = t - engraveDepth;
@@ -435,13 +456,13 @@ export function buildCapParts(layout, params, warnings) {
     }
     capGeom = b.build();
   } else {
-    warnings.push('Cap outline is too small for the socket; fell back to boolean construction (straight socket at the opening size).');
+    warnings.push('Cap outline is too small for the stem boss; fell back to boolean construction (straight socket at the opening size).');
     capGeom = extrude(layout.capShape, t, 0);
-    if (sock.bossBelow > 0) {
-      const cylinder = extrude(pointsToShape(circlePoints(bossD / 2, 48)), sock.bossBelow + 0.5, sock.openZ);
-      capGeom = csg(capGeom, cylinder, ADDITION);
+    if (hasPocket) {
+      capGeom = csg(capGeom, extrude(pointsToShape(pocket), sock.travel + 1, -1), SUBTRACTION);
+      capGeom = csg(capGeom, extrude(pointsToShape(S), sock.travel + 0.5, 0), ADDITION);
     }
-    capGeom = csg(capGeom, extrude(pointsToShape(socket.opening), s + 1, sock.openZ - 1), SUBTRACTION);
+    capGeom = csg(capGeom, extrude(pointsToShape(socket.opening), s + 1, -1), SUBTRACTION);
   }
   if (wantEngrave && engraveDepth > 0.05 && !engraveInShell) {
     // design crosses the cap edge (presets) -> boolean subtraction, repaired afterwards
@@ -476,7 +497,7 @@ export function buildCapParts(layout, params, warnings) {
 export const SOCKET_COUPONS = [
   { label: 'A straight 4.1', socketMode: 'cross', stemCrossWidth: 4.1, stemCrossThickness: 1.3 },
   { label: 'B straight 4.3', socketMode: 'cross', stemCrossWidth: 4.3, stemCrossThickness: 1.4 },
-  { label: 'C tapered 4.6-4.1', socketMode: 'tapered', stemCrossWidth: 4.1, stemCrossThickness: 1.3, socketOpening: 4.6 },
+  { label: 'C tapered 6.0-4.6', socketMode: 'tapered', stemCrossWidth: 4.6, stemCrossThickness: 1.3, socketOpening: 6.0 }, // = the production default
   { label: 'D tapered 4.8-4.2', socketMode: 'tapered', stemCrossWidth: 4.2, stemCrossThickness: 1.3, socketOpening: 4.8 },
   { label: 'E round 5.0', socketMode: 'round', roundDiameter: 5.0 },
   { label: 'F round 5.4', socketMode: 'round', roundDiameter: 5.4 },
