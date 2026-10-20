@@ -14,9 +14,8 @@ Live site: https://cbik6.github.io/stlmill/ (later: https://stlmill.com)
 | Tool | Status | What it makes |
 | --- | --- | --- |
 | [Clicker](./clicker/) | live | Keyboard-switch clicker — put your text, logo or image on a satisfying MX-switch fidget |
-| Keychain | soon | Keychain & tag maker |
-| Coaster | soon | Coaster generator |
-| Box | soon | Parametric box |
+| Lithophane | soon | A photo turned into a plate that shows its picture when lit from behind |
+| QR Tag | soon | A keychain with a scannable QR code and a line of text, in two colours |
 
 The list above mirrors `src/hub/tools.js`, which drives the cards on the landing page.
 
@@ -65,11 +64,13 @@ Every tool imports `src/shared/base.css` and calls `initTheme()` from
 3. **Register it** in `src/hub/tools.js` — one entry in the `TOOLS` array:
 
    ```js
-   { id: 'coaster', name: 'Coaster', tagline: 'Coaster generator',
-     href: './coaster/', status: 'live', icon: ICONS.coaster },
+   { id: 'lithophane', name: 'Lithophane', sub: 'One line for the card.',
+     tagline: 'Lithophane generator', href: './lithophane/', status: 'live',
+     color: 'white', action: 'Open the mill', icon: ICONS.lithophane },
    ```
 
-   Use `status: 'soon'` to show a disabled "Coming soon" card before the tool ships.
+   Use `status: 'soon'` while the tool is unbuilt: the hub then draws a dashed
+   shadow-board outline on an empty peg (never a "coming soon" card — see DESIGN.md).
 4. **Add the entry to the build** in `vite.config.js`:
 
    ```js

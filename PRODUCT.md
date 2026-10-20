@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-Vite 8 multi-page site, vanilla JS/HTML/CSS (no framework), three.js + three-bvh-csg for geometry, JSZip for 3MF. Static build deployed by GitHub Actions to GitHub Pages (repo `cbik6/stlmill`), later served at the owner's domain stlmill.com. Relative asset base (`./`) so one build works at both URLs.
+Vite 8 multi-page site, vanilla JS/HTML/CSS (no framework), three.js + three-bvh-csg for geometry, JSZip for 3MF. Static build (repo `cbik6/stlmill`) deployed to Cloudflare Workers as static assets (`wrangler.jsonc`), served at stlmill.com with DNS on Cloudflare. Relative asset base (`./`) so the same build works under any path or domain.
 
 ## Users
 
