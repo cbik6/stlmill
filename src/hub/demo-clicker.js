@@ -14,7 +14,15 @@ import { traceBitmap } from '../clicker/engine/trace.js';
 
 const MAX_CHARS = 12;
 const RELIEF_HEIGHT = 1.2; // mm
-const TURN_SECONDS = 12; // idle rotation period
+
+// Camera convention: offset from target = (sin az * cos el, cos az * cos el, sin el) * dist,
+// i.e. az = 0 is the +Y side (where the relief's baseline faces after buildRelief's rotateZ(PI)).
+const READABLE_AZ = THREE.MathUtils.degToRad(-35); // 3/4 view from the left of the +Y side
+const READABLE_EL = THREE.MathUtils.degToRad(32); // above the plate
+const SWEEP_AMPLITUDE = THREE.MathUtils.degToRad(35); // idle azimuth oscillates +-35 deg
+const SWEEP_PERIOD = 12; // s for a full back-and-forth (6 s each way), sinusoidal ease-in-out
+const DRIFT_TAU = 2.5; // s: time constant for drifting back to the sweep after a drag
+const RETURN_SECONDS = 0.4; // ease back to the readable pose after typing / resizing
 const FONT_FAMILY = '"Barlow Semi Condensed", "Arial Black", sans-serif';
 const RASTER_W = 512;
 const RASTER_H = 256;
@@ -184,8 +192,6 @@ export function createDemoClicker(
   controls.rotateSpeed = 0.8;
   controls.minPolarAngle = 0.12;
   controls.maxPolarAngle = Math.PI * 0.5; // never look up from under the shadow plane
-  controls.autoRotate = true;
-  controls.autoRotateSpeed = 60 / TURN_SECONDS; // OrbitControls: speed 2 = 30 s per turn
   // OrbitControls sets touch-action: none; let vertical page scroll through on touch
   // devices (horizontal drags still rotate the model).
   canvas.style.touchAction = 'pan-y';
@@ -251,9 +257,9 @@ export function createDemoClicker(
 
     // Light + shadow frustum scale with the model.
     const s = currentSize;
-    // High and to the right, barely in front: the shadow spills out to the left of the
-    // body where the 3/4 camera can see it, while the cap top stays the brightest face.
-    sun.position.set(s * 1.6, -s * 0.25, s * 2.2);
+    // High and to the camera's right, barely in front of the readable pose: the shadow
+    // spills out to the side where the 3/4 camera sees it; the cap top stays brightest.
+    sun.position.set(-s * 1.6, s * 0.25, s * 2.2);
     const sc = sun.shadow.camera;
     sc.left = -s * 1.1;
     sc.right = s * 1.1;
@@ -302,9 +308,65 @@ export function createDemoClicker(
     buildRelief();
   }
 
-  // --- camera fitting
+  // --- camera motion state
+  // The camera is either driven by us (idle sweep / return-to-readable) or by
+  // OrbitControls (while the visitor drags, or hovers to pause the sweep). Our pose is
+  //   az = READABLE_AZ + SWEEP_AMPLITUDE * sin(2 pi phase) + driftAz,  el = READABLE_EL + driftEl
+  // where drift is whatever offset the visitor left behind; it decays back to zero.
   const offset = new THREE.Vector3();
-  let cameraInitialised = false;
+  let dist = 100;
+  let phase = 0; // sweep phase in [0, 1); 0 = readable azimuth
+  let driftAz = 0;
+  let driftEl = 0;
+  let hovered = false;
+  let dragging = false;
+  let ret = null; // active return-to-readable: { t, fromAz, fromEl }
+
+  const mql = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  let reduceMotion = !!mql?.matches;
+  const onMql = (e) => { reduceMotion = e.matches; };
+  mql?.addEventListener?.('change', onMql);
+
+  const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+  const sweepAz = () => READABLE_AZ + (reduceMotion ? 0 : SWEEP_AMPLITUDE * Math.sin(2 * Math.PI * phase));
+  const weOwnCamera = () => ret !== null || (!dragging && !hovered);
+
+  function placeCamera() {
+    const az = sweepAz() + driftAz;
+    const el = READABLE_EL + driftEl;
+    offset.set(Math.sin(az) * Math.cos(el), Math.cos(az) * Math.cos(el), Math.sin(el));
+    camera.position.copy(offset.multiplyScalar(dist)).add(controls.target);
+    camera.lookAt(controls.target);
+  }
+
+  /** Read the camera that OrbitControls moved and express it as drift from our sweep. */
+  function syncFromCamera() {
+    offset.copy(camera.position).sub(controls.target);
+    const len = offset.length() || 1;
+    const az = Math.atan2(offset.x, offset.y);
+    const el = Math.asin(Math.max(-1, Math.min(1, offset.z / len)));
+    driftAz = wrapAngle(az - sweepAz());
+    driftEl = el - READABLE_EL;
+  }
+
+  /** Ease the camera back to the readable pose (cubic ease-out), then resume the sweep from there. */
+  function returnToReadable() {
+    if (dragging) return; // the visitor is holding the model; do not fight them
+    if (!weOwnCamera()) syncFromCamera();
+    // Re-express the current pose relative to the readable azimuth (phase 0).
+    const az = sweepAz() + driftAz;
+    phase = 0;
+    driftAz = wrapAngle(az - READABLE_AZ);
+    if (reduceMotion || !running) {
+      ret = null;
+      driftAz = 0;
+      driftEl = 0;
+      placeCamera();
+      controls.update();
+      return;
+    }
+    ret = { t: 0, fromAz: driftAz, fromEl: driftEl };
+  }
 
   function fitCamera() {
     const d = dims(currentSize);
@@ -315,21 +377,11 @@ export function createDemoClicker(
     const vFov = THREE.MathUtils.degToRad(camera.fov);
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
     const fov = Math.min(vFov, hFov);
-    const dist = (radius / Math.sin(fov / 2)) * 1.02;
+    dist = (radius / Math.sin(fov / 2)) * 1.02;
 
     controls.target.set(0, 0, hz * 0.9);
-    if (!cameraInitialised) {
-      // Pleasing 3/4 view: from front-right (-Y is the front), ~32 deg above the plate.
-      const az = THREE.MathUtils.degToRad(35);
-      const el = THREE.MathUtils.degToRad(32);
-      offset.set(Math.sin(az) * Math.cos(el), -Math.cos(az) * Math.cos(el), Math.sin(el));
-      cameraInitialised = true;
-    } else {
-      // Keep whatever angle the user (or the idle spin) has reached; only refit distance.
-      offset.copy(camera.position).sub(controls.target).normalize();
-    }
-    camera.position.copy(offset.multiplyScalar(dist)).add(controls.target);
-    camera.lookAt(controls.target);
+    if (!weOwnCamera()) syncFromCamera(); // keep the angle the visitor has reached
+    placeCamera();
     controls.update();
   }
 
@@ -352,7 +404,27 @@ export function createDemoClicker(
     raf = requestAnimationFrame(frame);
     const dt = lastTime ? Math.min((now - lastTime) / 1000, 0.1) : 0;
     lastTime = now;
-    controls.update(dt);
+
+    if (weOwnCamera()) {
+      if (ret) {
+        ret.t += dt;
+        const p = Math.min(1, ret.t / RETURN_SECONDS);
+        const e = 1 - (1 - p) ** 3; // cubic ease-out
+        driftAz = ret.fromAz * (1 - e);
+        driftEl = ret.fromEl * (1 - e);
+        if (p >= 1) ret = null;
+      } else if (!reduceMotion) {
+        phase = (phase + dt / SWEEP_PERIOD) % 1;
+        const k = Math.exp(-dt / DRIFT_TAU);
+        driftAz *= k;
+        driftEl *= k;
+      }
+      placeCamera();
+      controls.update(); // applies any residual drag inertia on top, then it fades out
+    } else {
+      controls.update();
+      syncFromCamera();
+    }
     renderer.render(scene, camera);
   }
 
@@ -369,11 +441,15 @@ export function createDemoClicker(
     cancelAnimationFrame(raf);
   }
 
-  // --- interaction: pause idle spin while hovered
-  const onEnter = () => { controls.autoRotate = false; };
-  const onLeave = () => { controls.autoRotate = true; };
+  // --- interaction: pause the idle sweep while hovered; drag rotates freely
+  const onEnter = () => { hovered = true; };
+  const onLeave = () => { hovered = false; };
+  const onDragStart = () => { dragging = true; ret = null; };
+  const onDragEnd = () => { dragging = false; };
   canvas.addEventListener('pointerenter', onEnter);
   canvas.addEventListener('pointerleave', onLeave);
+  controls.addEventListener('start', onDragStart);
+  controls.addEventListener('end', onDragEnd);
 
   // --- visibility
   const onVisibility = () => { if (document.hidden) stop(); else start(); };
@@ -427,6 +503,7 @@ export function createDemoClicker(
       return;
     }
     rebuildText();
+    returnToReadable();
     if (!running) renderer.render(scene, camera);
   }
 
@@ -438,6 +515,7 @@ export function createDemoClicker(
     buildSolids();
     buildRelief();
     fitCamera();
+    returnToReadable();
     if (!running) renderer.render(scene, camera);
   }
 
@@ -456,6 +534,9 @@ export function createDemoClicker(
     stop();
     canvas.removeEventListener('pointerenter', onEnter);
     canvas.removeEventListener('pointerleave', onLeave);
+    controls.removeEventListener('start', onDragStart);
+    controls.removeEventListener('end', onDragEnd);
+    mql?.removeEventListener?.('change', onMql);
     document.removeEventListener('visibilitychange', onVisibility);
     document.fonts?.removeEventListener('loadingdone', onFontsLoaded);
     io?.disconnect();
@@ -473,7 +554,23 @@ export function createDemoClicker(
     canvas.remove();
   }
 
-  return { setText, setSize, setColors, dispose };
+  const api = { setText, setSize, setColors, dispose };
+  // Non-enumerable test hook (not part of the public API): current camera pose in degrees.
+  Object.defineProperty(api, '_debug', {
+    enumerable: false,
+    value: {
+      getPose() {
+        offset.copy(camera.position).sub(controls.target);
+        const len = offset.length() || 1;
+        return {
+          az: THREE.MathUtils.radToDeg(Math.atan2(offset.x, offset.y)),
+          el: THREE.MathUtils.radToDeg(Math.asin(Math.max(-1, Math.min(1, offset.z / len)))),
+          phase, driftAz: THREE.MathUtils.radToDeg(driftAz), hovered, dragging, returning: ret !== null, reduceMotion,
+        };
+      },
+    },
+  });
+  return api;
 }
 
 function normalizeText(text) {

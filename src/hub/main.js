@@ -1,9 +1,9 @@
 import '../shared/base.css';
 import './hub.css';
-import { initTheme, bindThemeToggle } from '../shared/theme.js';
 import { TOOLS } from './tools.js';
 
-initTheme();
+// No theme handling on the hub: the pegboard is one lit scene. Tool pages
+// keep using ../shared/theme.js and the dark tokens in base.css.
 
 const reducedMotion =
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -19,6 +19,10 @@ function escapeHtml(s) {
 const COLORS = new Set(['orange', 'teal', 'white']);
 const colorClass = (c) => (COLORS.has(c) ? c : 'white');
 
+// Authored arrow: stroke weight matches the 800-weight stems of the tab type.
+const TAB_ARROW =
+  '<svg class="tab-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16M13 5l7 7-7 7"/></svg>';
+
 /* ------------------------------------------------------------------ wall */
 
 // A live tool without authored markup: a printed swatch card on a hook.
@@ -31,7 +35,7 @@ function renderSwatch(tool) {
         <span class="hole" aria-hidden="true"></span>
         <h3 class="emb emb-${c} card-label">${escapeHtml(tool.name)}</h3>
         <p class="card-sub">${escapeHtml(tool.sub || tool.tagline || '')}</p>
-        <a class="tab" href="${escapeHtml(tool.href)}">${escapeHtml(tool.action || 'Open the mill')}<span class="tab-arrow" aria-hidden="true">→</span></a>
+        <a class="tab" href="${escapeHtml(tool.href)}">${escapeHtml(tool.action || 'Open the mill')}${TAB_ARROW}</a>
       </div>
     </article>`;
 }
@@ -155,4 +159,3 @@ function wireDemo() {
 
 renderWall();
 wireDemo();
-bindThemeToggle(document.getElementById('theme-toggle'));
