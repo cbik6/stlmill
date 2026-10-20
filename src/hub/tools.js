@@ -28,22 +28,17 @@ export const ICONS = {
       '<path d="M9 12v3M15 12v3"/>' +
       '<rect x="6" y="15" width="12" height="6" rx="1.5"/>'
   ),
-  // Tag with ring
-  keychain: svg(
+  // Lithophane: a framed plate with a light behind it
+  lithophane: svg(
+    '<rect x="3" y="4" width="18" height="14" rx="1.5"/>' +
+      '<path d="M7 14l3-4 2.5 3 2-2 2.5 3"/>' +
+      '<path d="M9 21h6"/>'
+  ),
+  // QR keychain: a tag with a few QR modules
+  qr: svg(
     '<path d="M3 8.5V4a1 1 0 0 1 1-1h4.5l12 12-5.5 5.5L3 8.5z"/>' +
-      '<circle cx="7.5" cy="7.5" r="1.25" fill="currentColor" stroke="none"/>'
-  ),
-  // Coaster: ring with droplet
-  coaster: svg(
-    '<circle cx="12" cy="13" r="8"/>' +
-      '<circle cx="12" cy="13" r="4.5"/>' +
-      '<path d="M12 3.5v2"/>'
-  ),
-  // Box with lid
-  box: svg(
-    '<path d="M3 9l9-5 9 5-9 5-9-5z"/>' +
-      '<path d="M3 9v7l9 5 9-5V9"/>' +
-      '<path d="M12 14v7"/>'
+      '<circle cx="7.5" cy="7.5" r="1.25" fill="currentColor" stroke="none"/>' +
+      '<path d="M11 11h2v2h-2zM14 14h2v2h-2zM11 14h1M15 11h1"/>'
   ),
 };
 
@@ -61,37 +56,26 @@ export const TOOLS = [
     icon: ICONS.clicker,
   },
   {
-    id: 'keychain',
-    name: 'Keychain',
-    sub: 'A tag with your name, logo or image, and a loop for the ring.',
-    tagline: 'Keychain & tag maker',
-    href: './keychain/',
-    status: 'soon',
-    color: 'teal',
-    action: 'Open the mill',
-    icon: ICONS.keychain,
-  },
-  {
-    id: 'coaster',
-    name: 'Coaster',
-    sub: 'A round or square coaster with your design on top.',
-    tagline: 'Coaster generator',
-    href: './coaster/',
+    id: 'lithophane',
+    name: 'Lithophane',
+    sub: 'A photo turned into a plate that only shows its picture when lit from behind.',
+    tagline: 'Lithophane — flat or curved, framed, with your photo',
+    href: './lithophane/',
     status: 'soon',
     color: 'white',
     action: 'Open the mill',
-    icon: ICONS.coaster,
+    icon: ICONS.lithophane,
   },
   {
-    id: 'box',
-    name: 'Box',
-    sub: 'A parametric box with a fitted lid.',
-    tagline: 'Parametric box',
-    href: './box/',
+    id: 'qr-keychain',
+    name: 'QR Tag',
+    sub: 'A keychain with a scannable QR code and a line of text, in two colours.',
+    tagline: 'QR keychain — a scannable code and label as a two-colour tag',
+    href: './qr-keychain/',
     status: 'soon',
     color: 'teal',
     action: 'Open the mill',
-    icon: ICONS.box,
+    icon: ICONS.qr,
   },
 ];
 
