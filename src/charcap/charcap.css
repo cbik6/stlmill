@@ -1725,16 +1725,11 @@ body.board {
   margin-top: 0;
 }
 
+/* Labels on the white card are the control-label recipe (Barlow 600 14 px, sentence case),
+   the same as "Projected onto" below them; the uppercase tracked label belongs to orange cards. */
 .face-editor .ctl-label {
   display: block;
   margin: 0 0 6px;
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 13px;
-  line-height: 1;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--white-ink-2);
 }
 
 .face-editor > .ctl-label {

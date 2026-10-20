@@ -304,7 +304,7 @@ const session = createSession({
     showResult(result);
     setSummary(result);
     setSlip(result.warnings);
-    rail.setUploadError('');
+    if (result.character.kind === 'upload') rail.setUploadError(''); // this file built: it is no longer refused
     benchEmpty.hidden = true;
     if (firstResult) {
       firstResult = false;

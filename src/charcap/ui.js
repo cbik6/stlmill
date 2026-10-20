@@ -610,19 +610,29 @@ function wireHeader(rail, hooks) {
   const width = rangeControl({ path: 'width', label: 'Width', unit: 'mm', min: 20, max: 60, step: 0.5, id: 'cc-width' });
   q('#cc-width-slot').replaceWith(width.root);
 
+  // The file line says what happened to the file: "Loaded x" once it built, "Refused x" when the
+  // engine turned it down (never both at once).
+  let refusedName = '';
+  function syncUploadName() {
+    const name = state.source.upload.name;
+    uploadName.textContent = name ? `${name === refusedName ? 'Refused' : 'Loaded'} ${name}` : '';
+    uploadName.hidden = !name;
+  }
+
   return {
     sync(s, meta) {
       const src = s.source;
       kindInputs.forEach((i) => (i.checked = i.value === src.kind));
       panes.forEach((p) => (p.hidden = p.dataset.kind !== src.kind));
       tiles.forEach((b) => b.setAttribute('aria-pressed', src.kind === 'sample' && b.dataset.id === src.sample.id ? 'true' : 'false'));
-      uploadName.textContent = src.upload.name ? `Loaded ${src.upload.name}` : '';
-      uploadName.hidden = !src.upload.name;
+      syncUploadName();
       width.sync(s, meta);
     },
     /** Show (or clear) the engine's verdict on the uploaded mesh, plainly, on the card. */
     setUploadError(msg) {
       zone.showError(msg || '');
+      refusedName = msg ? state.source.upload.name : '';
+      syncUploadName();
     },
     tiles,
   };
