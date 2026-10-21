@@ -529,7 +529,7 @@ export function buildCapParts(layout, params, warnings) {
 export const SOCKET_COUPONS = [
   { label: 'A straight 4.1', socketMode: 'cross', stemCrossWidth: 4.1, stemCrossThickness: 1.3 },
   { label: 'B straight 4.3', socketMode: 'cross', stemCrossWidth: 4.3, stemCrossThickness: 1.4 },
-  { label: 'C tapered 6.0-4.6', socketMode: 'tapered', stemCrossWidth: 4.6, stemCrossThickness: 1.3, socketOpening: 6.0 }, // = the production default
+  { label: 'C tapered 6.0-4.6', socketMode: 'tapered', stemCrossWidth: 4.6, stemCrossThickness: 1.3, socketOpening: 6.0 }, // the old production default (too loose on the cross)
   { label: 'D tapered 4.8-4.2', socketMode: 'tapered', stemCrossWidth: 4.2, stemCrossThickness: 1.3, socketOpening: 4.8 },
   { label: 'E round 5.0', socketMode: 'round', roundDiameter: 5.0 },
   { label: 'F round 5.4', socketMode: 'round', roundDiameter: 5.4 },

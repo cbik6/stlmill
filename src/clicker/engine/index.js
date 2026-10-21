@@ -14,7 +14,8 @@
 //            underside, the stem boss (switch.bossDiameter) hangs from the pocket ceiling down to
 //            z = 0 (bottom flush, nothing below the cap), and the socket is cut up into the boss
 //            (ceiling at z = stemHeight). The UI should place it at z = assembly.capZ in the body
-//            frame (boss bottom on the housing top; the housing rises into the pocket when pressed).
+//            frame (boss bottom level with the housing top, inside the stem collar; the housing
+//            rises into the pocket when pressed).
 //   design : 'raised'  -> relief standing on the cap top (z = thickness .. thickness+designHeight)
 //            'inlay'   -> filler exactly filling a pocket in the cap top (z = thickness-designHeight .. thickness)
 //            'engraved'-> no design part (pocket only). Same frame as the cap in both cases.
@@ -55,14 +56,14 @@ export const DEFAULT_PARAMS = {
   // + clearance per side, e.g. 35 mm heart -> 45.6 mm body); for the presets it is the base's
   // longest side and the design fills `design.fill` % of the cap's inner area.
   base: { style: 'outline' /* 'outline'|'circle'|'square'|'hexagon' */, size: 35 /* mm, see above */, margin: 2.5 /* padding between design and cap edge */, cornerRadius: 4 },
-  // cap 6.0 thick, built like a real MX keycap: a 16.2 mm rounded-square housing pocket 4.2 deep
+  // cap 6.2 thick, built like a real MX keycap: a 16.2 mm rounded-square housing pocket 4.4 deep
   // (switch travel) is cut up from the underside, a stem boss hangs from its ceiling down to the
-  // underside plane, the 3.6 mm socket is cut up into the boss, the 0.8 mm inlay/engraving pocket
-  // comes down from the top, and 1.0 mm of cap stays above the housing pocket (6.0 = 4.2 + 1.0 + 0.8).
-  cap: { thickness: 6.0, designHeight: 0.8, designMode: 'inlay' /* 'inlay'|'raised'|'engraved' */ },
-  // Seat = 6.6 + max(0, 3.6 - socket depth) = 6.6: the boss bottom (underside plane) sits on the
-  // MX upper housing top with the stem tip at the socket ceiling; pressing drives the housing
-  // 4.2 mm up into the pocket. rimHeight 7.0 = seat + 0.4 (cap underside 0.4 mm below the rim).
+  // underside plane, the 4.0 mm socket is cut up into the boss, the 0.8 mm inlay/engraving pocket
+  // comes down from the top, and 1.0 mm of cap stays above the housing pocket (6.2 = 4.4 + 1.0 + 0.8).
+  cap: { thickness: 6.2, designHeight: 0.8, designMode: 'inlay' /* 'inlay'|'raised'|'engraved' */ },
+  // Seat = 6.6 + max(0, 3.6 - socket depth) = 6.6: the boss bottom (underside plane) is level with
+  // the MX upper housing top (the 6.0 boss drops inside the stem collar of dustproof switches, so
+  // the cap rides on the stem alone); pressing drives the housing 4.4 mm up into the pocket. rimHeight 7.0 = seat + 0.4 (cap underside 0.4 mm below the rim).
   // height 'auto' = floor + cavity + 1.5 plate + 7.0 rim, where the floor is 1.5 mm, or 4.2 mm when
   // the centre-post pocket (3.0 + 0.2 deep + 1.0 solid) is needed under a housing-only cavity:
   //   'clipped' pins: 4.2 + 5.5 + 1.5 + 7.0 = 18.2 mm; 'keep': 1.5 + 8.5 + 1.5 + 7.0 = 18.5 mm.
@@ -77,17 +78,17 @@ export const DEFAULT_PARAMS = {
     post: { diameter: 4.0, height: 3.0 } /* centre locating post under the lower housing (3-pin switches) */,
     postClearance: 0.3 /* radial clearance of the round post pocket cut into the cavity floor when the cavity is shallower than housing + post; the floor grows to keep 1.0 mm solid under it */,
     plateThickness: 1.5,
-    // stem socket: copy of the measured "ghost" cap that fits the user's switches - a tapered
-    // cross 6.0 wide at the underside opening narrowing to 4.6 at the ceiling, 4.0 deep; the arm
-    // thickness scales with the same ratio (1.3 at the ceiling, ~1.7 at the opening)
-    socketMode: 'tapered' /* 'tapered'|'cross'|'round' */,
-    stemCrossWidth: 4.6 /* cross width at the socket ceiling */,
-    stemCrossThickness: 1.3 /* arm thickness at the ceiling */,
+    // stem socket: exact copy of the measured "ghost" cap that fits the user's dustproof switches -
+    // a STRAIGHT cross 4.4 wide with 1.4 arms, 4.0 deep, cut into a round 6.0 boss (0.8 mm wall at
+    // the arm tips) that hangs 4.4 mm from the pocket ceiling, bottom flush with the underside
+    socketMode: 'cross' /* 'tapered'|'cross'|'round' */,
+    stemCrossWidth: 4.4 /* cross width (ceiling width for 'tapered') */,
+    stemCrossThickness: 1.4 /* arm thickness */,
     socketOpening: 6.0 /* cross width at the underside opening ('tapered' only) */,
     roundDiameter: 5.0 /* hole diameter ('round' only, glue fit) */,
-    stemHeight: 3.6 /* socket depth = full MX stem; cut up into the boss (and slab if deeper) */,
-    travel: 4.2 /* housing pocket depth in the cap underside = MX travel 4.0 + 0.2 */,
-    bossDiameter: 6.4 /* stem boss hanging from the pocket ceiling; 0.2 mm wall around the 6.0 opening at the bottom (7.0 prints with a 0.4 mm wall if the switch collar allows) */,
+    stemHeight: 4.0 /* socket depth (ghost: 4.0); cut up into the boss (and slab if deeper) */,
+    travel: 4.4 /* housing pocket depth in the cap underside = boss length (ghost: 4.4) */,
+    bossDiameter: 6.0 /* stem boss hanging from the pocket ceiling (ghost: 6.0; 6.4 sat on the stem collar and killed the travel) */,
   },
   keychain: { enabled: false, outerRadius: 4.5, innerRadius: 2.2, angle: 90 /* deg around the base; 90 = top (+Y) */ },
   fit: { clearance: 0.3 /* cap-to-recess gap per side */, switchTolerance: 0.15 /* added per side to the pocket */ },

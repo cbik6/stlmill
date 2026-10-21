@@ -456,11 +456,11 @@ check(Math.abs(base.assembly.floorThickness - 4.2) < 1e-6 && Math.abs(base.assem
   check(pocketEdge.length === 2 && Math.abs(pocketEdge[1] - 1.0) < 1e-6, `body ray at (2,0) is inside the 4.6 pocket (got ${pocketEdge.map((z) => z.toFixed(2)).join(', ')})`);
 }
 check(base.parts[1].geometry.boundingBox.min.z === 0, `cap has no boss: nothing below z = 0 (min z ${base.parts[1].geometry.boundingBox.min.z})`);
-check(Math.abs(base.parts[1].geometry.boundingBox.max.z - 6.0) < 1e-6, 'cap top at z = thickness 6.0');
-check(Math.abs(base.parts[2].geometry.boundingBox.min.z - 5.2) < 1e-6 && Math.abs(base.parts[2].geometry.boundingBox.max.z - 6.0) < 1e-6, 'inlay filler spans thickness-designHeight .. thickness (5.2..6.0)');
+check(Math.abs(base.parts[1].geometry.boundingBox.max.z - 6.2) < 1e-6, 'cap top at z = thickness 6.2');
+check(Math.abs(base.parts[2].geometry.boundingBox.min.z - 5.4) < 1e-6 && Math.abs(base.parts[2].geometry.boundingBox.max.z - 6.2) < 1e-6, 'inlay filler spans thickness-designHeight .. thickness (5.4..6.2)');
 check(base.assembly.engraveDepth === 0.8, 'inlay pocket depth = designHeight 0.8');
-check(base.assembly.bossBelow === 0 && Math.abs(base.assembly.socketCeilingZ - 3.6) < 1e-9, 'socket cut into the boss: ceiling at z = 3.6, nothing below z = 0');
-check(Math.abs(base.assembly.travel - 4.2) < 1e-9 && Math.abs(base.assembly.pocketSide - 16.2) < 1e-9 && Math.abs(base.assembly.bossDiameter - 6.4) < 1e-9, `housing pocket 16.2 sq x 4.2 deep, boss 6.4 (got ${base.assembly.pocketSide}, ${base.assembly.travel}, ${base.assembly.bossDiameter})`);
+check(base.assembly.bossBelow === 0 && Math.abs(base.assembly.socketCeilingZ - 4.0) < 1e-9, 'socket cut into the boss: ceiling at z = 4.0, nothing below z = 0');
+check(Math.abs(base.assembly.travel - 4.4) < 1e-9 && Math.abs(base.assembly.pocketSide - 16.2) < 1e-9 && Math.abs(base.assembly.bossDiameter - 6.0) < 1e-9, `housing pocket 16.2 sq x 4.4 deep, boss 6.0 (got ${base.assembly.pocketSide}, ${base.assembly.travel}, ${base.assembly.bossDiameter})`);
 check(base.assembly.travel <= base.assembly.capThickness - base.assembly.engraveDepth - 1.0 + 1e-9, 'inlay floor keeps >= 1.0 mm of cap above the housing pocket ceiling');
 {
   const capG = base.parts[1].geometry;
@@ -481,14 +481,14 @@ check(base.assembly.travel <= base.assembly.capThickness - base.assembly.engrave
     return zs.filter((z, i) => i === 0 || Math.abs(z - zs[i - 1]) > 1e-6);
   };
   const axis = rays(0, 0);
-  check(axis.length === 2 && Math.abs(axis[0] - 3.6) < 1e-6 && Math.abs(axis[1] - 5.2) < 1e-6, `boss: axis ray hits the socket ceiling at 3.6 then the inlay floor at 5.2 (got ${axis.map((z) => z.toFixed(2)).join(', ')})`);
+  check(axis.length === 2 && Math.abs(axis[0] - 4.0) < 1e-6 && Math.abs(axis[1] - 5.4) < 1e-6, `boss: axis ray hits the socket ceiling at 4.0 then the inlay floor at 5.4 (got ${axis.map((z) => z.toFixed(2)).join(', ')})`);
   // probe points under the design's rectangle (left of its hole), inside / outside the 16.2 pocket
   const pocketRay = rays(-6, 3); // beside the design's hole (|y| > 2.3), inside the pocket, clear of the boss
-  check(pocketRay.length === 2 && Math.abs(pocketRay[0] - 4.2) < 1e-6 && Math.abs(pocketRay[1] - 5.2) < 1e-6, `pocket: ray at (-6,3) hits the pocket ceiling at 4.2 then the inlay floor (got ${pocketRay.map((z) => z.toFixed(2)).join(', ')})`);
+  check(pocketRay.length === 2 && Math.abs(pocketRay[0] - 4.4) < 1e-6 && Math.abs(pocketRay[1] - 5.4) < 1e-6, `pocket: ray at (-6,3) hits the pocket ceiling at 4.4 then the inlay floor (got ${pocketRay.map((z) => z.toFixed(2)).join(', ')})`);
   const ringRay = rays(-12, 0);
-  check(ringRay.length >= 2 && Math.abs(ringRay[0]) < 1e-6 && Math.abs(ringRay[ringRay.length - 1] - 5.2) < 1e-6, `underside ring solid outside the pocket: ray at (-12,0) starts at z = 0 (got ${ringRay.map((z) => z.toFixed(2)).join(', ')})`);
-  const bossRay = rays(3.1, 0.3);
-  check(bossRay.length === 2 && Math.abs(bossRay[0]) < 1e-6 && Math.abs(bossRay[1] - 5.2) < 1e-6, `boss bottom flush with z = 0 beside the opening (got ${bossRay.map((z) => z.toFixed(2)).join(', ')})`);
+  check(ringRay.length >= 2 && Math.abs(ringRay[0]) < 1e-6 && Math.abs(ringRay[ringRay.length - 1] - 5.4) < 1e-6, `underside ring solid outside the pocket: ray at (-12,0) starts at z = 0 (got ${ringRay.map((z) => z.toFixed(2)).join(', ')})`);
+  const bossRay = rays(2.6, 0.3); // inside the 6.0 boss, beyond the 2.2 arm tip, off the arm's 0.7 half-width
+  check(bossRay.length === 2 && Math.abs(bossRay[0]) < 1e-6 && Math.abs(bossRay[1] - 5.4) < 1e-6, `boss bottom flush with z = 0 beside the cross arm (got ${bossRay.map((z) => z.toFixed(2)).join(', ')})`);
 }
 check(base.warnings.length === 0, `no warnings with defaults (${base.warnings.join(' | ')})`);
 check(base.parts[1].print && base.parts[1].print.flipX === true, 'inlay cap prints flipped');
@@ -510,10 +510,10 @@ const asm = base.assembly;
 check(Math.abs(asm.floorThickness - 4.2) < 1e-6, `floor thickness 4.2 with the post pocket (got ${asm.floorThickness})`);
 check(DEFAULT_PARAMS.switch.pins === 'clipped' && DEFAULT_PARAMS.switch.cavityDepth === 'auto' && Math.abs(asm.cavityDepth - 5.5) < 1e-6, `pins clipped -> cavity depth 5.5 (got ${asm.cavityDepth})`);
 check(Math.abs(asm.plateTopZ - (asm.bodyHeight - DEFAULT_PARAMS.body.rimHeight)) < 1e-6, 'plate top z = height - rim');
-check(Math.abs(asm.seat - (6.6 + Math.max(0, 3.6 - DEFAULT_PARAMS.switch.stemHeight))) < 1e-9 && Math.abs(asm.seat - 6.6) < 1e-9, `seat = 6.6 + max(0, 3.6 - socket 3.6) = 6.6: boss bottom on the housing top (got ${asm.seat})`);
+check(Math.abs(asm.seat - (6.6 + Math.max(0, 3.6 - DEFAULT_PARAMS.switch.stemHeight))) < 1e-9 && Math.abs(asm.seat - 6.6) < 1e-9, `seat = 6.6 + max(0, 3.6 - socket 4.0) = 6.6: boss bottom level with the housing top (got ${asm.seat})`);
 check(Math.abs(asm.capZ - (asm.plateTopZ + asm.seat)) < 1e-6, 'capZ = plateTopZ + seat');
 check(Math.abs(asm.capZ - (asm.bodyHeight - 0.4)) < 1e-6, `cap underside seats 0.4 mm below the rim (capZ ${asm.capZ}, height ${asm.bodyHeight})`);
-check(DEFAULT_PARAMS.body.rimHeight === 7.0 && DEFAULT_PARAMS.cap.thickness === 6.0 && DEFAULT_PARAMS.cap.designHeight === 0.8 && DEFAULT_PARAMS.switch.stemHeight === 3.6 && DEFAULT_PARAMS.switch.travel === 4.2 && DEFAULT_PARAMS.switch.bossDiameter === 6.4, 'defaults: rim 7.0, cap 6.0 / 0.8, socket 3.6, travel 4.2, boss 6.4');
+check(DEFAULT_PARAMS.body.rimHeight === 7.0 && DEFAULT_PARAMS.cap.thickness === 6.2 && DEFAULT_PARAMS.cap.designHeight === 0.8 && DEFAULT_PARAMS.switch.stemHeight === 4.0 && DEFAULT_PARAMS.switch.travel === 4.4 && DEFAULT_PARAMS.switch.bossDiameter === 6.0, 'defaults: rim 7.0, cap 6.2 / 0.8, socket 4.0, travel 4.4, boss 6.0');
 // the cap must enclose the 16.2 housing pocket + (1.2 wall + 0.3 pad) all round (19.2), so the body is 19.2 + 2 * 2.8 = 24.8 across its narrow side
 // design 35 x 20.7 (152 x 90 units) -> cap 40 x 25.7 -> body 45.6 x 31.3 (the 19.2 pocket envelope stays hidden)
 check(Math.abs(asm.bodyHeight - 18.2) < 1e-6 && Math.abs(base.bounds.x - 45.6) < 0.15 && Math.abs(base.bounds.y - 31.3) < 0.2, `default bounds ~45.6 x 31.3 x 18.2 (got ${base.bounds.x.toFixed(2)} x ${base.bounds.y.toFixed(2)} x ${base.bounds.z.toFixed(2)})`);
@@ -633,17 +633,17 @@ const halfExtentAt = (geometry, z, axis = 0) => {
 console.log('\n== stem socket variants');
 const depth = DEFAULT_PARAMS.switch.stemHeight;
 const capT = DEFAULT_PARAMS.cap.thickness;
-check(depth === 3.6 && DEFAULT_PARAMS.switch.socketMode === 'tapered' && DEFAULT_PARAMS.switch.socketOpening === 6.0 && DEFAULT_PARAMS.switch.stemCrossWidth === 4.6 && DEFAULT_PARAMS.switch.stemCrossThickness === 1.3 && DEFAULT_PARAMS.switch.roundDiameter === 5.0, 'socket defaults: tapered 6.0 -> 4.6 x 1.3, 3.6 deep, round 5.0');
+check(depth === 4.0 && DEFAULT_PARAMS.switch.socketMode === 'cross' && DEFAULT_PARAMS.switch.stemCrossWidth === 4.4 && DEFAULT_PARAMS.switch.stemCrossThickness === 1.4 && DEFAULT_PARAMS.switch.roundDiameter === 5.0, 'socket defaults (ghost copy): straight cross 4.4 x 1.4, 4.0 deep, round 5.0');
 {
   // tapered arm thickness scales with the width ratio: 1.3 at the ceiling -> ~1.7 at the opening
   const { socketPolygons: sp } = await import('./index.js');
-  const sock = sp(DEFAULT_PARAMS.switch);
+  const sock = sp({ ...DEFAULT_PARAMS.switch, socketMode: 'tapered', stemCrossWidth: 4.6, stemCrossThickness: 1.3, socketOpening: 6.0 });
   const halfThick = (poly) => Math.min(...poly.filter((p) => Math.abs(p.x) > 2.2).map((p) => Math.abs(p.y)));
   check(Math.abs(halfThick(sock.ceiling) * 2 - 1.3) < 1e-6 && Math.abs(halfThick(sock.opening) * 2 - 1.3 * (6.0 / 4.6)) < 1e-6, `tapered arm thickness 1.3 at the ceiling, ${(1.3 * 6 / 4.6).toFixed(2)} at the opening (got ${(halfThick(sock.opening) * 2).toFixed(3)})`);
 }
 for (const [mode, extra, openHalf, ceilHalf] of [
-  ['cross', {}, 2.3, 2.3],
-  ['tapered', {}, 3.0, 2.3],
+  ['cross', {}, 2.2, 2.2], // the default: ghost copy, 4.4 wide
+  ['tapered', { bossDiameter: 6.5 }, 3.0, 2.2], // the 6.0 opening needs a boss over 6.41 (else it warns and widens)
   ['round', {}, 2.5, 2.5],
 ]) {
   // raised mode -> plain cap top, so the axis ray sees exactly the socket ceiling (z = depth) and the top (z = thickness)
@@ -653,8 +653,10 @@ for (const [mode, extra, openHalf, ceilHalf] of [
   check(capG.boundingBox.min.z === 0, `${mode}: socket opens on the underside plane z = 0, no boss (min z ${capG.boundingBox.min.z})`);
   check(hits.length === 2 && Math.abs(hits[0] - depth) < 1e-6 && Math.abs(hits[1] - capT) < 1e-6, `${mode}: axis ray hits the ceiling at z = ${depth} and the cap top at ${capT} only (got ${hits.map((z) => z.toFixed(2)).join(', ')})`);
   // socket polygon extents via the inner vertices on the opening / ceiling planes
-  // socket vertices only: the 6.0 opening's corners sit at r 3.12, the boss ring (r 3.19..3.2) is excluded
-  const inner = (z) => { const pos = capG.attributes.position.array; let m = 0; for (let i = 0; i < pos.length; i += 3) if (Math.abs(pos[i + 2] - z) < 1e-4 && Math.hypot(pos[i], pos[i + 1]) < 3.15) m = Math.max(m, Math.abs(pos[i])); return m; };
+  // socket vertices only: everything inside the boss ring (ring radius = bossDiameter/2); the tapered 6.0
+  // opening's corners sit at r 3.12, inside the 6.4 boss's ring at 3.2
+  const maxR = r.assembly.bossDiameter / 2 - 0.03;
+  const inner = (z) => { const pos = capG.attributes.position.array; let m = 0; for (let i = 0; i < pos.length; i += 3) if (Math.abs(pos[i + 2] - z) < 1e-4 && Math.hypot(pos[i], pos[i + 1]) < maxR) m = Math.max(m, Math.abs(pos[i])); return m; };
   check(Math.abs(inner(0) - openHalf) < 0.02, `${mode}: opening half-width ${openHalf} (got ${inner(0).toFixed(3)})`);
   check(Math.abs(inner(depth) - ceilHalf) < 0.02, `${mode}: ceiling half-width ${ceilHalf} (got ${inner(depth).toFixed(3)})`);
   const unexpected = r.warnings.filter((w) => !/need supports/.test(w));
@@ -747,7 +749,7 @@ check(sw.boundingBox.min.z > base.assembly.postPocketBottomZ + 0.2 - 1e-6 && sw.
 }
 check(Math.abs(sw.boundingBox.max.x - 7.8) < 1e-3, 'switch flange is 15.6 wide');
 check(Math.abs(sw.boundingBox.max.z - MX.STEM_HEIGHT - (base.assembly.capZ - (base.assembly.seat - 6.6))) < 1e-3, `housing top is ${(base.assembly.seat - 6.6).toFixed(1)} mm below the seated cap underside (seat ${base.assembly.seat})`);
-check(Math.abs(sw.boundingBox.max.z - (base.assembly.capZ + base.assembly.socketCeilingZ)) < 1e-3, `stem tip sits at the socket ceiling (tip ${sw.boundingBox.max.z.toFixed(2)}, ceiling ${(base.assembly.capZ + base.assembly.socketCeilingZ).toFixed(2)})`);
+check(Math.abs(base.assembly.capZ + base.assembly.socketCeilingZ - sw.boundingBox.max.z - (DEFAULT_PARAMS.switch.stemHeight - MX.STEM_HEIGHT)) < 1e-3, `stem tip sits ${(DEFAULT_PARAMS.switch.stemHeight - MX.STEM_HEIGHT).toFixed(1)} mm below the socket ceiling, like the ghost's 4.0 socket on a 3.6 stem (tip ${sw.boundingBox.max.z.toFixed(2)}, ceiling ${(base.assembly.capZ + base.assembly.socketCeilingZ).toFixed(2)})`);
 check(sw.boundingBox.max.x < base.assembly.pocketSide / 2 && sw.boundingBox.max.z - MX.STEM_HEIGHT + base.assembly.travel >= base.assembly.capZ + base.assembly.travel - 1e-6, 'housing (15.6) fits the 16.2 pocket and can rise the full travel into it');
 const swKeep = buildReferenceSwitch({ switch: { pins: 'keep' } });
 swKeep.computeBoundingBox();
