@@ -36,6 +36,39 @@ export const CAP_POCKET_CORNER = 1.5;
 export const CAP_POCKET_WALL = 1.2;
 const ENVELOPE_PAD = 0.3; // covers raster quantisation + contour smoothing losses
 
+// Fit to switch (outline style, base.fitSwitch): a wide, short design (a word) is grown until its
+// short side + 2*margin covers the switch envelope plus COVER_PAD, so the letters hide the switch
+// instead of a square envelope bump showing behind them. Growth stops at MAX_GROWN_LONG.
+const COVER_PAD = 0.6;
+export const MAX_GROWN_LONG = 140;
+
+// Multiple switches under one cap (switch.count): spaced along the cap's long axis at the quarter
+// points, never closer than the standard MX key pitch (cap pockets and body cavities stay apart).
+// 'auto' picks two when the cap is at least AUTO_TWO_LENGTH long and AUTO_TWO_ASPECT times longer
+// than it is wide (a long word), otherwise one.
+export const SWITCH_PITCH = 19.05;
+export const AUTO_TWO_LENGTH = 48;
+export const AUTO_TWO_ASPECT = 1.8;
+
+/**
+ * Switch centres (mm, design frame) for a cap whose bounding box is capW x capH (centred on the
+ * origin). count: 'auto' | 1 | 2. Returns { positions: [{x,y}], axis: 'x'|'y', requested }.
+ */
+export function planSwitches(count, capW, capH, envelopeSide) {
+  const axis = capW >= capH ? 'x' : 'y';
+  const L = Math.max(capW, capH);
+  const S = Math.max(1e-6, Math.min(capW, capH));
+  let n;
+  if (count === 'auto' || !Number.isFinite(Number(count))) n = L >= AUTO_TWO_LENGTH && L / S >= AUTO_TWO_ASPECT ? 2 : 1;
+  else n = Math.max(1, Math.min(2, Math.round(Number(count))));
+  if (n === 1) return { positions: [{ x: 0, y: 0 }], axis, requested: n };
+  const dMin = SWITCH_PITCH / 2;
+  const dMax = L / 2 - envelopeSide / 2;
+  const d = Math.max(dMin, Math.min(L / 4, dMax));
+  const positions = axis === 'x' ? [{ x: -d, y: 0 }, { x: d, y: 0 }] : [{ x: 0, y: -d }, { x: 0, y: d }];
+  return { positions, axis, requested: n };
+}
+
 // Printed outlines (body / recess / cap walls) get stronger smoothing than the design relief:
 // a 7-px moving average on the raw pixel loop (kills 1-px notches that RDP would keep as
 // "extreme" points), RDP 0.6 px, two corner-preserving Chaikin passes, a light post-RDP and a
@@ -197,6 +230,8 @@ export function computeLayout(spec, params, warnings = []) {
     if (spec) warnings.push('Design is empty; using a circular base instead of an outline.');
   }
   let designLongUnits = 0;
+  let designWUnits = 0;
+  let designHUnits = 0;
   if (designUnit.length) {
     const b0 = bboxOfPoints(allPoints(designUnit));
     const cx = (b0.minX + b0.maxX) / 2;
@@ -214,7 +249,9 @@ export function computeLayout(spec, params, warnings = []) {
       x: p.x - (b1.minX + b1.maxX) / 2,
       y: p.y - (b1.minY + b1.maxY) / 2,
     }));
-    designLongUnits = Math.max(b1.maxX - b1.minX, b1.maxY - b1.minY);
+    designWUnits = b1.maxX - b1.minX;
+    designHUnits = b1.maxY - b1.minY;
+    designLongUnits = Math.max(designWUnits, designHUnits);
   }
 
   // The cap must enclose the switch flange envelope AND its own housing pocket (flange + clearance)
@@ -231,17 +268,45 @@ export function computeLayout(spec, params, warnings = []) {
   let recessShape;
   let capShape;
   let designShapes = [];
+  let switchPositions = [{ x: 0, y: 0 }];
+  let switchAxis = 'x';
+  let grownFrom = 0; // > 0 when Fit to switch enlarged the design (the size it was asked to be)
+  const switchCount = sw.count ?? 'auto';
+  const envelopeAt = (c, inset = 0) =>
+    roundedRectPoints(envelopeSide / 2 - inset, envelopeSide / 2 - inset, envelopeCorner, 8).map((p) => ({ x: p.x + c.x, y: p.y + c.y }));
 
   if (style === 'outline') {
     // base.size is the DESIGN's longest side (scaled by fill); cap, recess and body grow around it
     const pad = margin + wall + clearance;
     designLong = Math.max(2, size) * fill;
+    // Fit to switch: grow a short, wide design until its short side + margin covers the envelope
+    if (base.fitSwitch !== false && designLongUnits > 0) {
+      const shortUnits = Math.min(designWUnits, designHUnits);
+      const needShort = envelopeSide + COVER_PAD - 2 * margin;
+      if (shortUnits > 1e-9 && needShort > 0) {
+        const needLong = (needShort * designLongUnits) / shortUnits;
+        // too thin to cover within MAX_GROWN_LONG (a long sentence, a bar): keep the asked size and
+        // let the envelope widen the cap as before, rather than growing it and still showing the square
+        if (needLong > designLong + 0.05 && needLong <= MAX_GROWN_LONG) {
+          grownFrom = designLong;
+          designLong = needLong;
+        } else if (needLong > MAX_GROWN_LONG) {
+          warnings.push(`The design is too thin to cover the switch even at ${MAX_GROWN_LONG} mm long, so the cap is widened around the switch instead. Shorter text fits better.`);
+        }
+      }
+    }
     const sUnit = designLongUnits > 0 ? designLong / designLongUnits : 1;
     designShapes = transformShapes(designUnit, (p) => ({ x: p.x * sUnit, y: p.y * sUnit }));
 
+    // switch positions from the cap's bounding box (design + margin on every side)
+    const plan = planSwitches(switchCount, designWUnits * sUnit + 2 * margin, designHUnits * sUnit + 2 * margin, envelopeSide);
+    switchPositions = plan.positions;
+    switchAxis = plan.axis;
+    const reach = Math.max(...switchPositions.map((c) => Math.max(Math.abs(c.x), Math.abs(c.y))));
+
     // --- raster space -------------------------------------------------------------------
     const envBody = envelopeSide + 2 * (wall + clearance);
-    const extent = Math.max(envBody, designLong + 2 * pad);
+    const extent = Math.max(envBody + 2 * reach, designLong + 2 * pad);
     const k = WORK_PX / extent; // px per mm
     const W = Math.ceil(extent * k) + 64;
     const H = W;
@@ -250,7 +315,6 @@ export function computeLayout(spec, params, warnings = []) {
 
     const designMask = rasterizeShapes(transformShapes(designShapes, toPx), W, H);
     let capMask = dilateMask(designMask, W, H, margin * k);
-    const envPts = roundedRectPoints(envelopeSide / 2, envelopeSide / 2, envelopeCorner, 8).map(toPx);
     // Warn when the design (+ margin) is narrower than the pocket envelope in either axis: the
     // envelope then sticks out beyond the design outline. (Filling internal concavities near the
     // centre - letter gaps, a heart's notch - is expected and silent: the switch sits there.)
@@ -262,7 +326,7 @@ export function computeLayout(spec, params, warnings = []) {
         warnings.push(`The design is narrower than the switch pocket, so the cap is widened to ${envelopeSide.toFixed(1)} mm around it (the pocket envelope shows beyond the design outline).`);
       }
     }
-    rasterizePolygonsEvenOdd([envPts], W, H, capMask);
+    for (const c of switchPositions) rasterizePolygonsEvenOdd([envelopeAt(c).map(toPx)], W, H, capMask);
 
     let capTraced = traceBitmap(capMask, W, H, OUTLINE_TRACE);
     if (capTraced.length > 1) {
@@ -308,14 +372,22 @@ export function computeLayout(spec, params, warnings = []) {
     designLong = Math.max(2, avail) * fill;
     const sUnit = designLongUnits > 0 ? designLong / designLongUnits : 1;
     designShapes = transformShapes(designUnit, (p) => ({ x: p.x * sUnit, y: p.y * sUnit }));
+    // presets keep their shape, so a second switch is only used when both envelopes fit inside
+    const cb = bboxOfPoints(capPts);
+    const plan = planSwitches(switchCount, cb.maxX - cb.minX, cb.maxY - cb.minY, envelopeSide);
+    switchAxis = plan.axis;
+    if (plan.positions.length > 1) {
+      const fits = plan.positions.every((c) => envelopeAt(c, 0.15).every((p) => pointInPolygon(p, capPts)));
+      if (fits) switchPositions = plan.positions;
+      else if (switchCount !== 'auto') warnings.push(`This base is too small for two switches; it needs about ${(SWITCH_PITCH + envelopeSide + 2 * (wall + clearance)).toFixed(0)} mm along one side. Using one switch.`);
+    }
   }
 
   const capPoints = capShape.getPoints(1);
   const bodyPoints = bodyShape.getPoints(1);
   // The recess (cap + clearance) must contain the switch envelope square so the upper
   // housing clears the body: test the envelope's (slightly shrunk) rounded corners.
-  const envTest = roundedRectPoints(envelopeSide / 2 - 0.15, envelopeSide / 2 - 0.15, envelopeCorner, 6);
-  if (!envTest.every((p) => pointInPolygon(p, capPoints))) {
+  if (!switchPositions.every((c) => envelopeAt(c, 0.15).every((p) => pointInPolygon(p, capPoints)))) {
     const needCircle = 2 * (envelopeHalfDiag + wall + clearance);
     warnings.push(
       `Cap is too small to clear the switch (pocket ${envelopeSide.toFixed(1)} mm): increase the base size (a circle needs at least ${needCircle.toFixed(1)} mm) or use a smaller wall.`,
@@ -338,6 +410,9 @@ export function computeLayout(spec, params, warnings = []) {
     bodyPoints,
     recessPoints: recessShape.getPoints(1),
     capPoints,
+    switchPositions, // switch centres (mm, design frame); body cavities and cap pockets sit here
+    switchAxis,
+    grownFrom: designShapes.length ? grownFrom : 0,
   };
 }
 

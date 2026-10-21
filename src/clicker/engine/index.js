@@ -55,7 +55,10 @@ export const DEFAULT_PARAMS = {
   // size: for 'outline' it is the DESIGN's longest side (the body grows around it: + margin + wall
   // + clearance per side, e.g. 35 mm heart -> 45.6 mm body); for the presets it is the base's
   // longest side and the design fills `design.fill` % of the cap's inner area.
-  base: { style: 'outline' /* 'outline'|'circle'|'square'|'hexagon' */, size: 35 /* mm, see above */, margin: 2.5 /* padding between design and cap edge */, cornerRadius: 4 },
+  // fitSwitch (outline only): a short, wide design (a word) grows until its letters cover the switch
+  // pocket, so the cap follows the letters instead of showing the pocket square behind them; size
+  // then acts as a minimum. Long caps get two switches (switch.count 'auto').
+  base: { style: 'outline' /* 'outline'|'circle'|'square'|'hexagon' */, size: 35 /* mm, see above */, margin: 2.5 /* padding between design and cap edge */, cornerRadius: 4, fitSwitch: true },
   // cap 6.2 thick, built like a real MX keycap: a 16.2 mm rounded-square housing pocket 4.4 deep
   // (switch travel) is cut up from the underside, a stem boss hangs from its ceiling down to the
   // underside plane, the 4.0 mm socket is cut up into the boss, the 0.8 mm inlay/engraving pocket
@@ -78,6 +81,10 @@ export const DEFAULT_PARAMS = {
     post: { diameter: 4.0, height: 3.0 } /* centre locating post under the lower housing (3-pin switches) */,
     postClearance: 0.3 /* radial clearance of the round post pocket cut into the cavity floor when the cavity is shallower than housing + post; the floor grows to keep 1.0 mm solid under it */,
     plateThickness: 1.5,
+    // switches under the one cap: 'auto' = two for a long, narrow cap (>= 48 mm and 1.8:1, e.g. a
+    // word), else one; 1 or 2 forces it. Two sit on the long axis at the quarter points, at least
+    // 19.05 mm (MX pitch) apart; every cavity, pocket, boss and socket is the single-switch one.
+    count: 'auto',
     // stem socket: exact copy of the measured "ghost" cap that fits the user's dustproof switches -
     // a STRAIGHT cross 4.4 wide with 1.4 arms, 4.0 deep, cut into a round 6.0 boss (0.8 mm wall at
     // the arm tips) that hangs 4.4 mm from the pocket ceiling, bottom flush with the underside
@@ -203,6 +210,9 @@ export async function buildClicker(userParams = {}) {
       postPocketDepth: heights.postPocketDepth,
       postPocketDiameter: heights.postPocketDiameter,
       postPocketBottomZ: heights.postPocketBottomZ,
+      switchPositions: layout.switchPositions, // switch centres (mm, body frame), one per switch
+      switchCount: layout.switchPositions.length,
+      designGrownFrom: layout.grownFrom, // > 0: Fit to switch enlarged the design from this size (mm)
       designSize: layout.designSize, // longest side of the design, mm ("heart 35 mm")
       capSize: layout.capSize,
       bodySize: layout.bodySize, // longest side of the body, mm ("body 46 mm")
@@ -218,9 +228,10 @@ export async function buildClicker(userParams = {}) {
  * Simplified MX switch geometry positioned in the body frame (body resting on z = 0).
  * The plate top is at body.height - rimHeight; see solids.js for the per-section z offsets.
  * `params` defaults to DEFAULT_PARAMS; pass the same params used for buildClicker.
+ * `positions` = assembly.switchPositions (one switch drawn per centre; default one at the origin).
  */
-export function buildReferenceSwitch(params = DEFAULT_PARAMS) {
-  return buildReferenceSwitchGeometry(mergeParams(params));
+export function buildReferenceSwitch(params = DEFAULT_PARAMS, positions = null) {
+  return buildReferenceSwitchGeometry(mergeParams(params), positions);
 }
 
 export { THREE };

@@ -151,12 +151,15 @@ export const GROUPS = [
     id: 'footprint',
     title: 'Footprint',
     // For Outline the size slider sizes the DESIGN and the body wraps it, so the status reads both.
+    // Fit to switch can grow a word past the slider, and long caps ride two switches: say so.
     status: (s, a) => {
       const style = STYLE_LABELS[s.params.base.style] || s.params.base.style;
+      const switches = a?.switchCount > 1 ? ` · ${a.switchCount} switches` : '';
       if (s.params.base.style === "outline" && a?.designSize && a?.bodySize) {
-        return `${style} · design ${fmt(a.designSize)} mm · body ${fmt(a.bodySize)} mm`;
+        const fitted = a.designGrownFrom > 0 ? ' (fitted)' : '';
+        return `${style} · design ${fmt(a.designSize)} mm${fitted} · body ${fmt(a.bodySize)} mm${switches}`;
       }
-      return `${style} · ${fmt(s.params.base.size)} mm`;
+      return `${style} · ${fmt(s.params.base.size)} mm${switches}`;
     },
     controls: [
       {
@@ -171,6 +174,20 @@ export const GROUPS = [
         ],
       },
       { type: 'range', path: 'base.size', label: 'Size', unit: 'mm', min: 20, max: 60, step: 0.5 },
+      // Outline only: a word grows until its letters cover the switch, so the cap follows the
+      // letters instead of showing the switch square behind them (Size becomes the minimum).
+      { type: 'toggle', path: 'base.fitSwitch', label: 'Fit to switch', when: (p) => p.base.style === 'outline' },
+      // Long caps (a word) ride two switches spaced along the word; Auto decides from the cap shape.
+      {
+        type: 'segmented',
+        path: 'switch.count',
+        label: 'Switches',
+        options: [
+          ['auto', 'Auto'],
+          ['1', '1'],
+          ['2', '2'],
+        ],
+      },
       { type: 'range', path: 'design.fill', label: 'Fill', unit: '%', min: 40, max: 100, step: 1 },
       { type: 'range', path: 'base.margin', label: 'Margin', unit: 'mm', min: 1, max: 6, step: 0.1, when: (p) => p.base.style === 'outline' },
       { type: 'range', path: 'base.cornerRadius', label: 'Corner radius', unit: 'mm', min: 0, max: 10, step: 0.5, when: (p) => p.base.style === 'square' },
@@ -345,7 +362,7 @@ function segmentedControl(def) {
     root,
     sync(params) {
       const v = get(params, def.path);
-      inputs.forEach((i) => (i.checked = i.value === v));
+      inputs.forEach((i) => (i.checked = i.value === String(v)));
       const enabled = def.when ? !!def.when(params) : true;
       inputs.forEach((i) => (i.disabled = !enabled));
       root.classList.toggle('is-disabled', !enabled);

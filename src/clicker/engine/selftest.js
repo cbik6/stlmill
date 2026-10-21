@@ -759,5 +759,52 @@ const keepPlateTop = keep.assembly.plateTopZ;
 check(Math.abs(swKeep.boundingBox.min.z - (keepPlateTop - 1.5 - 5.0 - 3.3)) < 1e-3, `keep: pins bottom = plateBottom - 8.3 (got ${swKeep.boundingBox.min.z.toFixed(2)})`);
 check(swKeep.boundingBox.min.z > keep.assembly.cavityBottomZ - 1e-6, 'keep: pins stay above the cavity floor');
 
+// --- words: Fit to switch grows a short, wide design over the switch; long caps get two switches.
+// Every per-switch feature (cutout, cavity, post pocket, housing pocket, boss, socket) must be the
+// single-switch one, just moved: compare the ray hits at each switch centre with the base clicker's.
+{
+  const word = new THREE.Shape([[-30, -5], [30, -5], [30, 5], [-30, 5]].map(([x, y]) => new THREE.Vector2(x, y))); // 6:1, like "HELLO"
+  const wordSpec = makeDesignFromShapes([word], 1);
+  const w = report('word 6:1 (fit to switch, two switches)', await buildClicker({ design: { spec: wordSpec } }), { quiet: true });
+  const a = w.assembly;
+  const env = 19.2;
+  check(Math.abs(a.designGrownFrom - 35) < 1e-6 && Math.abs(a.designSize - (env + 0.6 - 5) * 6) < 1e-6, `word grows from 35 to ${((env + 0.6 - 5) * 6).toFixed(1)} mm so it covers the switch (got ${a.designGrownFrom} -> ${a.designSize.toFixed(2)})`);
+  const wcb = w.parts[1].geometry.boundingBox;
+  check(wcb.max.y - wcb.min.y > env + 0.2 && wcb.max.y - wcb.min.y < env + 1.2, `word cap is ${(wcb.max.y - wcb.min.y).toFixed(2)} tall: letters + margin cover the ${env} envelope, no bump`);
+  check(!w.warnings.some((x) => /narrower than the switch pocket|open edges|fell back/.test(x)), `word: no envelope, open-edge or fallback warnings (${w.warnings.join(' | ')})`);
+  check(a.switchCount === 2 && a.switchPositions.every((p) => p.y === 0) && Math.abs(a.switchPositions[0].x + a.switchPositions[1].x) < 1e-9, `word: two switches on the long axis, symmetric (got ${JSON.stringify(a.switchPositions)})`);
+  const d = a.switchPositions[1].x;
+  const capLong = a.designSize + 5;
+  check(Math.abs(d - capLong / 4) < 1e-6 && 2 * d >= 19.05, `word: switches at the quarter points, ${(2 * d).toFixed(2)} mm apart (>= 19.05 pitch)`);
+  const baseBody = hitsAlongAxis(base.parts[0].geometry, 0, 0).map((z) => z.toFixed(3)).join(',');
+  const baseCap = hitsAlongAxis(base.parts[1].geometry, 0, 0)[0];
+  for (const p of a.switchPositions) {
+    const hb = hitsAlongAxis(w.parts[0].geometry, p.x, p.y).map((z) => z.toFixed(3)).join(',');
+    check(hb === baseBody, `word body at x=${p.x.toFixed(2)} matches the single-switch body (${hb} vs ${baseBody})`);
+    const hc = hitsAlongAxis(w.parts[1].geometry, p.x, p.y);
+    check(Math.abs(hc[0] - baseCap) < 1e-6, `word cap socket ceiling at x=${p.x.toFixed(2)} is ${hc[0].toFixed(2)} (single switch ${baseCap.toFixed(2)})`);
+    // housing pocket edge 8.1 mm out (16.2 pocket), boss 3.0 (6.0): same as the base cap
+    const ring = hitsAlongAxis(w.parts[1].geometry, p.x + 5, p.y)[0];
+    const ring0 = hitsAlongAxis(base.parts[1].geometry, 5, 0)[0];
+    check(Math.abs(ring - ring0) < 1e-6, `word cap housing pocket ceiling at x=${(p.x + 5).toFixed(2)} is ${ring.toFixed(2)} (single switch ${ring0.toFixed(2)})`);
+  }
+  check(Math.abs(a.capZ - base.assembly.capZ) < 1e-9 && Math.abs(a.bodyHeight - base.assembly.bodyHeight) < 1e-9, 'word: same seat and body height as the single-switch clicker');
+  const sw2 = buildReferenceSwitch({}, a.switchPositions);
+  sw2.computeBoundingBox();
+  check(Math.abs(sw2.boundingBox.max.x - (d + 7.8)) < 1e-3 && Math.abs(sw2.boundingBox.min.x + d + 7.8) < 1e-3, 'word: reference switch drawn at both positions');
+
+  const one = await buildClicker({ design: { spec: wordSpec }, switch: { count: 1 } });
+  check(one.assembly.switchCount === 1 && one.assembly.switchPositions[0].x === 0, 'switch.count 1 forces a single centred switch');
+  const off = await buildClicker({ design: { spec: wordSpec }, base: { fitSwitch: false } });
+  check(off.assembly.designGrownFrom === 0 && Math.abs(off.assembly.designSize - 35) < 1e-6 && off.warnings.some((x) => /narrower than the switch pocket/.test(x)), 'fitSwitch off keeps the asked 35 mm and the envelope widening');
+  check(off.assembly.switchCount === 1, `fitSwitch off: 35 mm word cap (40 mm) stays on one switch (got ${off.assembly.switchCount})`);
+  const heart = await buildClicker({ design: { spec } });
+  check(heart.assembly.switchCount === 1 && heart.assembly.designGrownFrom === 0, 'default heart: one switch, not grown');
+  const circ = await buildClicker({ design: { spec }, base: { style: 'circle', size: 40 }, switch: { count: 2 } });
+  check(circ.assembly.switchCount === 1 && circ.warnings.some((x) => /too small for two switches/.test(x)), 'a 40 mm circle cannot take two switches: falls back to one with a warning');
+  const sq = await buildClicker({ design: { spec: wordSpec }, base: { style: 'square', size: 60 }, switch: { count: 2 } });
+  check(sq.assembly.switchCount === 2 && !sq.warnings.some((x) => /open edges|fell back/.test(x)), `a 60 mm square takes two forced switches (got ${sq.assembly.switchCount}; ${sq.warnings.join(' | ')})`);
+}
+
 console.log(`\n${failures === 0 ? 'SELFTEST PASSED' : `SELFTEST FAILED (${failures})`} in ${Date.now() - t0} ms`);
 process.exit(failures === 0 ? 0 : 1);

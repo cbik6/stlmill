@@ -46,6 +46,18 @@ evaluator.useGroups = false;
 // the constrained-Delaunay splitter produces closed, lower-count meshes.
 evaluator.useCDTClipping = true;
 
+/** Switch centres from a layout ({x,y}[], mm); older layouts without them get one at the origin. */
+export function switchCentres(layout) {
+  const list = layout && Array.isArray(layout.switchPositions) ? layout.switchPositions : [];
+  return list.length ? list : [{ x: 0, y: 0 }];
+}
+
+/** Translate {x,y} points by c. */
+export function shiftPoints(pts, c) {
+  if (!c || (c.x === 0 && c.y === 0)) return pts;
+  return pts.map((p) => ({ x: p.x + c.x, y: p.y + c.y }));
+}
+
 function brush(geometry) {
   const b = new Brush(geometry);
   b.updateMatrixWorld(true);
@@ -226,16 +238,18 @@ export function buildBody(layout, params, heights, warnings) {
 
   const O = cleanPolygon(layout.bodyPoints);
   const R = cleanPolygon(layout.recessPoints);
-  const K = squarePolygon(sw.cutout);
+  // one cutout + cavity (+ post pocket) per switch; all fit numbers are the single-switch ones
+  const centres = switchCentres(layout);
   const cavitySide = Math.max(sw.cutout, sw.cavity) + 2 * tol;
   const hasCavity = cavityDepth > 0.05;
   const distinctCavity = hasCavity && cavitySide > sw.cutout + 0.05;
-  const C = squarePolygon(cavitySide);
+  const Ks = centres.map((c) => squarePolygon(sw.cutout, c.x, c.y));
+  const Cs = centres.map((c) => squarePolygon(cavitySide, c.x, c.y));
   // centre-post pocket in the cavity floor (round, shell-built: ring floor + pocket wall + pocket floor)
   const { postPocketDepth, postPocketDiameter, postPocketBottomZ } = heights;
   const hasPost = hasCavity && postPocketDepth > 0.05 && postPocketDiameter > 0.2;
-  const PP = hasPost ? cleanPolygon(circlePoints(postPocketDiameter / 2, 48)) : null;
-  const cavityFloor = (b, floorPoly, z) => {
+  const PPs = hasPost ? centres.map((c) => cleanPolygon(shiftPoints(circlePoints(postPocketDiameter / 2, 48), c))) : [];
+  const cavityFloor = (b, floorPoly, z, PP) => {
     if (hasPost && polygonContains(floorPoly, PP, 0.3)) {
       b.face(floorPoly, [PP], z, true); // cavity floor ring around the post pocket
       b.wall(PP, postPocketBottomZ, z, true); // pocket wall (hole)
@@ -256,21 +270,24 @@ export function buildBody(layout, params, heights, warnings) {
     b.wall(O, 0, H, false); // outer wall
     b.face(O, [R], H, true); // rim top
     b.wall(R, plateTopZ, H, true); // recess wall
-    const inner = distinctCavity ? C : K;
-    if (polygonContains(R, K, 0.05) && polygonContains(O, inner, 0.05)) {
-      b.face(R, [K], plateTopZ, true); // plate top (recess floor)
-      if (distinctCavity) {
-        b.wall(K, plateBottomZ, plateTopZ, true); // cutout wall through the plate
-        b.face(C, [K], plateBottomZ, false); // plate underside (cavity ceiling)
-        b.wall(C, cavityBottomZ, plateBottomZ, true); // cavity wall
-        cavityFloor(b, C, cavityBottomZ); // cavity floor (with the centre-post pocket when needed)
-      } else if (hasCavity) {
-        b.wall(K, cavityBottomZ, plateTopZ, true);
-        cavityFloor(b, K, cavityBottomZ);
-      } else {
-        b.wall(K, plateBottomZ, plateTopZ, true);
-        b.face(K, [], plateBottomZ, true);
-      }
+    const inners = distinctCavity ? Cs : Ks;
+    if (Ks.every((K) => polygonContains(R, K, 0.05)) && inners.every((I) => polygonContains(O, I, 0.05))) {
+      b.face(R, Ks, plateTopZ, true); // plate top (recess floor)
+      Ks.forEach((K, i) => {
+        const C = Cs[i];
+        if (distinctCavity) {
+          b.wall(K, plateBottomZ, plateTopZ, true); // cutout wall through the plate
+          b.face(C, [K], plateBottomZ, false); // plate underside (cavity ceiling)
+          b.wall(C, cavityBottomZ, plateBottomZ, true); // cavity wall
+          cavityFloor(b, C, cavityBottomZ, PPs[i]); // cavity floor (with the centre-post pocket when needed)
+        } else if (hasCavity) {
+          b.wall(K, cavityBottomZ, plateTopZ, true);
+          cavityFloor(b, K, cavityBottomZ, PPs[i]);
+        } else {
+          b.wall(K, plateBottomZ, plateTopZ, true);
+          b.face(K, [], plateBottomZ, true);
+        }
+      });
     } else {
       warnings.push('Base is too small for the switch cutout and cavity; the body was built without a switch opening.');
       b.face(R, [], plateTopZ, true);
@@ -291,15 +308,17 @@ function buildBodyCSG(layout, params, heights) {
   const tol = Math.max(0, params.fit.switchTolerance);
   const { height, plateTopZ, plateBottomZ, cavityBottomZ, cavityDepth } = heights;
   let g = extrude(layout.bodyShape, height, 0);
-  if (cavityDepth > 0.05) {
-    const cavitySide = Math.max(sw.cutout, sw.cavity) + 2 * tol;
-    g = csg(g, box(cavitySide, cavitySide, cavityBottomZ, plateBottomZ), SUBTRACTION);
-    if (heights.postPocketDepth > 0.05 && heights.postPocketDiameter > 0.2) {
-      const pocket = extrude(pointsToShape(circlePoints(heights.postPocketDiameter / 2, 48)), heights.postPocketDepth + 0.5, heights.postPocketBottomZ);
-      g = csg(g, pocket, SUBTRACTION);
+  for (const c of switchCentres(layout)) {
+    if (cavityDepth > 0.05) {
+      const cavitySide = Math.max(sw.cutout, sw.cavity) + 2 * tol;
+      g = csg(g, box(cavitySide, cavitySide, cavityBottomZ, plateBottomZ, c.x, c.y), SUBTRACTION);
+      if (heights.postPocketDepth > 0.05 && heights.postPocketDiameter > 0.2) {
+        const pocket = extrude(pointsToShape(shiftPoints(circlePoints(heights.postPocketDiameter / 2, 48), c)), heights.postPocketDepth + 0.5, heights.postPocketBottomZ);
+        g = csg(g, pocket, SUBTRACTION);
+      }
     }
+    g = csg(g, box(sw.cutout, sw.cutout, plateBottomZ - 0.5, plateTopZ + 0.5, c.x, c.y), SUBTRACTION);
   }
-  g = csg(g, box(sw.cutout, sw.cutout, plateBottomZ - 0.5, plateTopZ + 0.5), SUBTRACTION);
   g = csg(g, extrude(layout.recessShape, height - plateTopZ + 1, plateTopZ), SUBTRACTION);
   return g;
 }
@@ -426,19 +445,29 @@ export function buildCapParts(layout, params, warnings) {
   const s = sock.s; // socket depth
   const P = cleanPolygon(layout.capPoints);
   const socket = socketPolygons(sw);
-  const S = cleanPolygon(circlePoints(sock.bossD / 2, 48)); // stem boss
-  const pocket = cleanPolygon(roundedRectPoints(sock.pocketSide / 2, sock.pocketSide / 2, CAP_POCKET_CORNER, 10)); // housing pocket
+  // one stem boss + housing pocket + socket per switch, identical to the single-switch cap
+  const centres = switchCentres(layout);
+  const Ss = centres.map((c) => cleanPolygon(shiftPoints(circlePoints(sock.bossD / 2, 48), c))); // stem bosses
+  const pockets = centres.map((c) => cleanPolygon(shiftPoints(roundedRectPoints(sock.pocketSide / 2, sock.pocketSide / 2, CAP_POCKET_CORNER, 10), c))); // housing pockets
+  const sockets = centres.map((c) => ({
+    ...socket,
+    opening: shiftPoints(socket.opening, c),
+    ceiling: shiftPoints(socket.ceiling, c),
+  }));
+  const allIn = (outer, inners, m) => inners.every((q) => polygonContains(outer, q, m));
   // Housing pocket needs CAP_POCKET_WALL of cap around it; thin wall -> warning, no room -> no pocket
-  let hasPocket = sock.travel > 0.05 && polygonContains(P, pocket, CAP_POCKET_WALL);
+  let hasPocket = sock.travel > 0.05 && allIn(P, pockets, CAP_POCKET_WALL);
   if (!hasPocket && sock.travel > 0.05) {
-    if (polygonContains(P, pocket, 0.4)) {
+    if (allIn(P, pockets, 0.4)) {
       hasPocket = true;
       warnings.push(`Cap wall around the housing pocket is under ${CAP_POCKET_WALL} mm; enlarge the base or margin.`);
     } else {
       warnings.push(`Cap outline is too small for the ${sock.pocketSide.toFixed(1)} mm housing pocket; the cap has no pocket and will rest on the switch housing (no travel). Enlarge the base.`);
     }
   }
-  const stemFits = polygonContains(S, socket.opening, 0.04) && (hasPocket ? polygonContains(pocket, S, 0.5) : polygonContains(P, S, 0.5));
+  const stemFits = centres.every((_, i) =>
+    polygonContains(Ss[i], sockets[i].opening, 0.04) && (hasPocket ? polygonContains(pockets[i], Ss[i], 0.5) : polygonContains(P, Ss[i], 0.5)),
+  );
 
   // design polygons (cleaned once; shared by faces and walls)
   const designPolys = layout.designShapes.map((sh) => {
@@ -464,13 +493,20 @@ export function buildCapParts(layout, params, warnings) {
     const b = new ShellBuilder();
     b.wall(P, 0, t, false); // cap side wall
     if (hasPocket) {
-      b.face(P, [pocket], 0, false); // underside ring around the housing pocket
-      b.wall(pocket, 0, sock.travel, true); // pocket wall
-      b.face(pocket, [S], sock.travel, false); // pocket ceiling (faces down) around the boss
-      b.wall(S, 0, sock.travel, false); // boss outer wall, from the ceiling down to z = 0
-      addSocket(b, S, 0, sock.ceilingZ, socket); // boss bottom ring (flush with z = 0), socket walls, socket ceiling
+      b.face(P, pockets, 0, false); // underside ring around the housing pocket(s)
+      centres.forEach((_, i) => {
+        b.wall(pockets[i], 0, sock.travel, true); // pocket wall
+        b.face(pockets[i], [Ss[i]], sock.travel, false); // pocket ceiling (faces down) around the boss
+        b.wall(Ss[i], 0, sock.travel, false); // boss outer wall, from the ceiling down to z = 0
+        addSocket(b, Ss[i], 0, sock.ceilingZ, sockets[i]); // boss bottom ring (flush with z = 0), socket walls, socket ceiling
+      });
     } else {
-      addSocket(b, P, 0, sock.ceilingZ, socket); // no pocket: socket straight up into the slab
+      // no pocket: socket(s) straight up into the slab; the underside face carries every opening
+      addSocket(b, P, 0, sock.ceilingZ, sockets[0], sockets.slice(1).map((k) => k.opening));
+      for (const k of sockets.slice(1)) {
+        b.face(k.ceiling, [], sock.ceilingZ, false);
+        b.loft(k.opening, k.ceiling, 0, sock.ceilingZ, true);
+      }
     }
     if (engraveInShell) {
       const zf = t - engraveDepth;
@@ -490,11 +526,13 @@ export function buildCapParts(layout, params, warnings) {
   } else {
     warnings.push('Cap outline is too small for the stem boss; fell back to boolean construction (straight socket at the opening size).');
     capGeom = extrude(layout.capShape, t, 0);
-    if (hasPocket) {
-      capGeom = csg(capGeom, extrude(pointsToShape(pocket), sock.travel + 1, -1), SUBTRACTION);
-      capGeom = csg(capGeom, extrude(pointsToShape(S), sock.travel + 0.5, 0), ADDITION);
-    }
-    capGeom = csg(capGeom, extrude(pointsToShape(socket.opening), s + 1, -1), SUBTRACTION);
+    centres.forEach((_, i) => {
+      if (hasPocket) {
+        capGeom = csg(capGeom, extrude(pointsToShape(pockets[i]), sock.travel + 1, -1), SUBTRACTION);
+        capGeom = csg(capGeom, extrude(pointsToShape(Ss[i]), sock.travel + 0.5, 0), ADDITION);
+      }
+      capGeom = csg(capGeom, extrude(pointsToShape(sockets[i].opening), s + 1, -1), SUBTRACTION);
+    });
   }
   if (wantEngrave && engraveDepth > 0.05 && !engraveInShell) {
     // design crosses the cap edge (presets) -> boolean subtraction, repaired afterwards
@@ -656,7 +694,7 @@ export function buildSocketCoupons({ diameter = 18, height = 6, depth = 4.0, gap
  *   upper housing frustum:    15.6 -> 13.0 sq, P + 0.8 .. P + 6.6
  *   stem cross 4.1 x 1.3:     P + 6.6 .. P + 6.6 + stemHeight        (cap underside at P + 6.6)
  */
-export function buildReferenceSwitchGeometry(params) {
+export function buildReferenceSwitchGeometry(params, positions = null) {
   const sw = params.switch;
   const heights = resolveHeights(params, []);
   const plateTop = heights.plateTopZ;
@@ -693,7 +731,12 @@ export function buildReferenceSwitchGeometry(params) {
   parts.push(box(sw.stemCrossWidth, sw.stemCrossThickness, housingTop - 0.01, housingTop + MX.STEM_HEIGHT));
   parts.push(box(sw.stemCrossThickness, sw.stemCrossWidth, housingTop - 0.01, housingTop + MX.STEM_HEIGHT));
   for (const p of parts) p.deleteAttribute('uv');
-  const merged = mergeGeometries(parts, false);
+  const one = mergeGeometries(parts, false);
+  // one switch per position (switchPositions from buildClicker's assembly; default: the origin)
+  const centres = Array.isArray(positions) && positions.length ? positions : [{ x: 0, y: 0 }];
+  const merged = centres.length === 1 && !centres[0].x && !centres[0].y
+    ? one
+    : mergeGeometries(centres.map((c) => one.clone().translate(c.x, c.y, 0)), false);
   merged.computeVertexNormals();
   return merged;
 }

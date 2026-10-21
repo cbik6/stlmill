@@ -275,6 +275,10 @@ export class Viewer {
     this.capLift = Number.isFinite(assembly?.capZ) ? assembly.capZ : layout?.capLift ?? 0;
     if (result?.bounds) this.bounds = { ...result.bounds };
     if (assembly?.capBounds) this.capBounds = { ...assembly.capBounds };
+    // Cut open keeps x <= the cut. With two switches side by side on X the cut goes through the
+    // right-hand switch's centre (x = 0 would fall between them); otherwise through x = 0.
+    const xs = (assembly?.switchPositions || []).map((p) => p.x);
+    this.clipPlane.constant = xs.length > 1 ? Math.max(...xs) : 0;
 
     let count = 0;
     let dressed = false; // has a cap or design on top of the body

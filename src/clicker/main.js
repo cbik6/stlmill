@@ -50,15 +50,15 @@ const callIf = (name, ...args) => {
 callIf('setGrid', view.grid);
 callIf('setCallouts', view.callouts);
 
-// Reference switch: rebuilt from the params that shape it, only while shown.
+// Reference switch: rebuilt from the params that shape it (one per switch position), only while shown.
 let switchKey = '';
-function syncReferenceSwitch(params) {
+function syncReferenceSwitch(params, positions = session.getResult()?.assembly?.switchPositions) {
   if (!view.showSwitch) return;
-  const key = JSON.stringify([params.switch, params.body, params.fit, params.cap]);
+  const key = JSON.stringify([params.switch, params.body, params.fit, params.cap, positions || null]);
   if (key === switchKey) return;
   switchKey = key;
   try {
-    viewer.setReferenceSwitch(buildReferenceSwitch(params));
+    viewer.setReferenceSwitch(buildReferenceSwitch(params, positions));
   } catch (err) {
     console.error('[clicker] reference switch failed', err);
   }
@@ -308,7 +308,7 @@ const session = createSession({
   },
   onResult(result) {
     viewer.setModel({ parts: result.parts, bounds: result.bounds, assembly: result.assembly });
-    syncReferenceSwitch(result.params);
+    syncReferenceSwitch(result.params, result.assembly?.switchPositions);
     setSummary(result);
     rail.setSpec(result.spec);
     rail.setAssembly(result.assembly);
