@@ -51,7 +51,10 @@ export { CAP_POCKET_WALL, CAP_POCKET_CORNER } from './outline.js';
 
 export const DEFAULT_PARAMS = {
   design: { spec: null, fill: 100 /* % of the available area the design fills */, rotation: 0 /* deg CCW */ },
-  base: { style: 'outline' /* 'outline'|'circle'|'square'|'hexagon' */, size: 35 /* longest side, mm */, margin: 2.5 /* padding between design and cap edge */, cornerRadius: 4 },
+  // size: for 'outline' it is the DESIGN's longest side (the body grows around it: + margin + wall
+  // + clearance per side, e.g. 35 mm heart -> 45.6 mm body); for the presets it is the base's
+  // longest side and the design fills `design.fill` % of the cap's inner area.
+  base: { style: 'outline' /* 'outline'|'circle'|'square'|'hexagon' */, size: 35 /* mm, see above */, margin: 2.5 /* padding between design and cap edge */, cornerRadius: 4 },
   // cap 6.0 thick, built like a real MX keycap: a 16.2 mm rounded-square housing pocket 4.2 deep
   // (switch travel) is cut up from the underside, a stem boss hangs from its ceiling down to the
   // underside plane, the 3.6 mm socket is cut up into the boss, the 0.8 mm inlay/engraving pocket
@@ -199,6 +202,9 @@ export async function buildClicker(userParams = {}) {
       postPocketDepth: heights.postPocketDepth,
       postPocketDiameter: heights.postPocketDiameter,
       postPocketBottomZ: heights.postPocketBottomZ,
+      designSize: layout.designSize, // longest side of the design, mm ("heart 35 mm")
+      capSize: layout.capSize,
+      bodySize: layout.bodySize, // longest side of the body, mm ("body 46 mm")
       bodyHeight: heights.height,
       engraveDepth,
       capBounds,

@@ -71,17 +71,19 @@ const check = (cond, msg) => {
 
 // ---------------------------------------------------------------------------------- designs
 function syntheticDesign() {
+  // rounded rectangle 100 x 90 with a hole + a disc beside it (bbox 152 x 90 units, aspect 1.69,
+  // so at 35 mm the cap is taller than the 19.2 mm pocket envelope and no widening warning fires)
   const s = new THREE.Shape();
   const r = 12;
-  s.moveTo(-50 + r, -30);
-  s.lineTo(50 - r, -30);
-  s.absarc(50 - r, -30 + r, r, -Math.PI / 2, 0, false);
-  s.lineTo(50, 30 - r);
-  s.absarc(50 - r, 30 - r, r, 0, Math.PI / 2, false);
-  s.lineTo(-50 + r, 30);
-  s.absarc(-50 + r, 30 - r, r, Math.PI / 2, Math.PI, false);
-  s.lineTo(-50, -30 + r);
-  s.absarc(-50 + r, -30 + r, r, Math.PI, 1.5 * Math.PI, false);
+  s.moveTo(-50 + r, -45);
+  s.lineTo(50 - r, -45);
+  s.absarc(50 - r, -45 + r, r, -Math.PI / 2, 0, false);
+  s.lineTo(50, 45 - r);
+  s.absarc(50 - r, 45 - r, r, 0, Math.PI / 2, false);
+  s.lineTo(-50 + r, 45);
+  s.absarc(-50 + r, 45 - r, r, Math.PI / 2, Math.PI, false);
+  s.lineTo(-50, -45 + r);
+  s.absarc(-50 + r, -45 + r, r, Math.PI, 1.5 * Math.PI, false);
   const hole = new THREE.Path();
   hole.moveTo(-15, -10);
   hole.lineTo(-15, 10);
@@ -433,7 +435,14 @@ const spec = syntheticDesign();
 check(DEFAULT_PARAMS.cap.designMode === 'inlay', 'default designMode is inlay');
 const base = report('outline / inlay (synthetic, defaults)', await buildClicker({ design: { spec } }));
 check(base.parts.map((p) => p.name).join(',') === 'body,cap,design', 'parts are body,cap,design');
-check(Math.abs(base.bounds.x - 35) < 0.3, `body long side ~35 mm (got ${base.bounds.x.toFixed(2)})`);
+// outline semantics: base.size is the DESIGN's longest side; the body grows by margin + wall + clearance per side
+check(Math.abs(base.assembly.designSize - 35) < 1e-6, `designSize == base.size at fill 100 (got ${base.assembly.designSize})`);
+{
+  const d = base.parts[2].geometry.boundingBox;
+  check(Math.abs(d.max.x - d.min.x - 35) < 0.05, `design part is 35 mm wide (got ${(d.max.x - d.min.x).toFixed(2)})`);
+}
+check(Math.abs(base.bounds.x - (35 + 2 * (2.5 + 2.5 + 0.3))) < 0.3, `body long side = 35 + 2 * 5.3 = 45.6 mm (got ${base.bounds.x.toFixed(2)})`);
+check(Math.abs(base.assembly.bodySize - base.bounds.x) < 0.05 && Math.abs(base.assembly.capSize - (35 + 5)) < 0.3, `assembly.bodySize ${base.assembly.bodySize.toFixed(1)} / capSize ${base.assembly.capSize.toFixed(1)}`);
 check(DEFAULT_PARAMS.body.height === 'auto' && Math.abs(base.bounds.z - 18.2) < 1e-6, `body height auto -> 18.2 (got ${base.bounds.z})`);
 // centre-post pocket in the cavity floor: pocket z 1.0 .. 4.2 (post 3.0 + 0.2), 1.0 mm solid floor below it
 check(Math.abs(base.assembly.floorThickness - 4.2) < 1e-6 && Math.abs(base.assembly.postPocketDepth - 3.2) < 1e-9 && Math.abs(base.assembly.postPocketDiameter - 4.6) < 1e-9 && Math.abs(base.assembly.postPocketBottomZ - 1.0) < 1e-6, `post pocket 4.6 dia x 3.2 from z 1.0 to 4.2, floor 4.2 (got floor ${base.assembly.floorThickness}, pocket ${base.assembly.postPocketDiameter} x ${base.assembly.postPocketDepth} from ${base.assembly.postPocketBottomZ})`);
@@ -473,10 +482,11 @@ check(base.assembly.travel <= base.assembly.capThickness - base.assembly.engrave
   };
   const axis = rays(0, 0);
   check(axis.length === 2 && Math.abs(axis[0] - 3.6) < 1e-6 && Math.abs(axis[1] - 5.2) < 1e-6, `boss: axis ray hits the socket ceiling at 3.6 then the inlay floor at 5.2 (got ${axis.map((z) => z.toFixed(2)).join(', ')})`);
-  const pocketRay = rays(6, 0);
-  check(pocketRay.length === 2 && Math.abs(pocketRay[0] - 4.2) < 1e-6 && Math.abs(pocketRay[1] - 5.2) < 1e-6, `pocket: ray at (6,0) hits the pocket ceiling at 4.2 then the inlay floor (got ${pocketRay.map((z) => z.toFixed(2)).join(', ')})`);
-  const ringRay = rays(10, 0);
-  check(ringRay.length >= 2 && Math.abs(ringRay[0]) < 1e-6 && Math.abs(ringRay[ringRay.length - 1] - 5.2) < 1e-6, `underside ring solid outside the pocket: ray at (10,0) starts at z = 0 (got ${ringRay.map((z) => z.toFixed(2)).join(', ')})`);
+  // probe points under the design's rectangle (left of its hole), inside / outside the 16.2 pocket
+  const pocketRay = rays(-6, 3); // beside the design's hole (|y| > 2.3), inside the pocket, clear of the boss
+  check(pocketRay.length === 2 && Math.abs(pocketRay[0] - 4.2) < 1e-6 && Math.abs(pocketRay[1] - 5.2) < 1e-6, `pocket: ray at (-6,3) hits the pocket ceiling at 4.2 then the inlay floor (got ${pocketRay.map((z) => z.toFixed(2)).join(', ')})`);
+  const ringRay = rays(-12, 0);
+  check(ringRay.length >= 2 && Math.abs(ringRay[0]) < 1e-6 && Math.abs(ringRay[ringRay.length - 1] - 5.2) < 1e-6, `underside ring solid outside the pocket: ray at (-12,0) starts at z = 0 (got ${ringRay.map((z) => z.toFixed(2)).join(', ')})`);
   const bossRay = rays(3.1, 0.3);
   check(bossRay.length === 2 && Math.abs(bossRay[0]) < 1e-6 && Math.abs(bossRay[1] - 5.2) < 1e-6, `boss bottom flush with z = 0 beside the opening (got ${bossRay.map((z) => z.toFixed(2)).join(', ')})`);
 }
@@ -505,7 +515,17 @@ check(Math.abs(asm.capZ - (asm.plateTopZ + asm.seat)) < 1e-6, 'capZ = plateTopZ 
 check(Math.abs(asm.capZ - (asm.bodyHeight - 0.4)) < 1e-6, `cap underside seats 0.4 mm below the rim (capZ ${asm.capZ}, height ${asm.bodyHeight})`);
 check(DEFAULT_PARAMS.body.rimHeight === 7.0 && DEFAULT_PARAMS.cap.thickness === 6.0 && DEFAULT_PARAMS.cap.designHeight === 0.8 && DEFAULT_PARAMS.switch.stemHeight === 3.6 && DEFAULT_PARAMS.switch.travel === 4.2 && DEFAULT_PARAMS.switch.bossDiameter === 6.4, 'defaults: rim 7.0, cap 6.0 / 0.8, socket 3.6, travel 4.2, boss 6.4');
 // the cap must enclose the 16.2 housing pocket + (1.2 wall + 0.3 pad) all round (19.2), so the body is 19.2 + 2 * 2.8 = 24.8 across its narrow side
-check(Math.abs(asm.bodyHeight - 18.2) < 1e-6 && Math.abs(base.bounds.x - 35) < 0.1 && Math.abs(base.bounds.y - 24.8) < 0.15, `default bounds ~35 x 24.8 x 18.2 (got ${base.bounds.x.toFixed(2)} x ${base.bounds.y.toFixed(2)} x ${base.bounds.z.toFixed(2)})`);
+// design 35 x 20.7 (152 x 90 units) -> cap 40 x 25.7 -> body 45.6 x 31.3 (the 19.2 pocket envelope stays hidden)
+check(Math.abs(asm.bodyHeight - 18.2) < 1e-6 && Math.abs(base.bounds.x - 45.6) < 0.15 && Math.abs(base.bounds.y - 31.3) < 0.2, `default bounds ~45.6 x 31.3 x 18.2 (got ${base.bounds.x.toFixed(2)} x ${base.bounds.y.toFixed(2)} x ${base.bounds.z.toFixed(2)})`);
+// narrow design ("I" bar 10 x 100 units -> 3.5 x 35 mm): the cap is widened to the pocket envelope with a warning
+{
+  const bar = new THREE.Shape([[-5, -50], [5, -50], [5, 50], [-5, 50]].map(([x, y]) => new THREE.Vector2(x, y)));
+  const narrow = report('narrow bar (envelope shows)', await buildClicker({ design: { spec: makeDesignFromShapes([bar], 1) } }), { quiet: true });
+  check(narrow.warnings.some((w) => /narrower than the switch pocket/.test(w)), `narrow design warns about the widened cap (${narrow.warnings.join(' | ')})`);
+  const cb = narrow.parts[1].geometry.boundingBox;
+  check(Math.abs(cb.max.x - cb.min.x - 19.2) < 0.3 && Math.abs(cb.max.y - cb.min.y - 40) < 0.3, `narrow cap is 19.2 wide (envelope) x 40 tall (got ${(cb.max.x - cb.min.x).toFixed(2)} x ${(cb.max.y - cb.min.y).toFixed(2)})`);
+  check(Math.abs(narrow.assembly.designSize - 35) < 1e-6 && Math.abs(narrow.bounds.x - 24.8) < 0.3, `narrow body 24.8 wide (got ${narrow.bounds.x.toFixed(2)})`);
+}
 // pins kept: deeper cavity, taller body, same seat
 const keep = report('pins kept (cavity 8.5)', await buildClicker({ design: { spec }, switch: { pins: 'keep' } }), { quiet: true });
 check(Math.abs(keep.assembly.cavityDepth - 8.5) < 1e-6 && Math.abs(keep.assembly.bodyHeight - 18.5) < 1e-6 && Math.abs(keep.assembly.floorThickness - 1.5) < 1e-6 && keep.assembly.postPocketDepth === 0, `pins keep -> cavity 8.5 swallows the post (no pocket), height 18.5, floor 1.5 (got ${keep.assembly.cavityDepth}, ${keep.assembly.bodyHeight}, pocket ${keep.assembly.postPocketDepth})`);
@@ -533,9 +553,9 @@ await validate3MF(base, 'selftest');
 const traced = tracedSynthetic();
 check(traced.shapes.length === 2 && traced.shapes.some((s) => s.holes.length === 1), 'trace found 2 islands and the hole');
 const engraved = report('outline / engraved / keychain (traced synthetic)',
-  await buildClicker({ design: { spec: traced }, cap: { designMode: 'engraved' }, keychain: { enabled: true, angle: 45 } }));
+  await buildClicker({ design: { spec: traced }, cap: { designMode: 'engraved' }, keychain: { enabled: true, angle: 90 } }));
 check(engraved.parts.length === 2, 'engraved has no separate design part');
-check(engraved.bounds.y > base.bounds.y + 3, 'keychain ring extends bounds');
+check(engraved.bounds.y > base.bounds.y + 3, `keychain ring at 90 deg extends the Y bounds (${base.bounds.y.toFixed(1)} -> ${engraved.bounds.y.toFixed(1)})`);
 check(Math.abs(engraved.parts[1].geometry.boundingBox.max.z - DEFAULT_PARAMS.cap.thickness) < 1e-6, 'engraved cap keeps its top at thickness');
 check(hitFromBelow(engraved.parts[1].geometry, 0.01, 0.01) === -3.6 || true, 'cap stem present');
 

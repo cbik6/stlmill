@@ -150,7 +150,14 @@ export const GROUPS = [
   {
     id: 'footprint',
     title: 'Footprint',
-    status: (s) => `${STYLE_LABELS[s.params.base.style] || s.params.base.style} · ${fmt(s.params.base.size)} mm`,
+    // For Outline the size slider sizes the DESIGN and the body wraps it, so the status reads both.
+    status: (s, a) => {
+      const style = STYLE_LABELS[s.params.base.style] || s.params.base.style;
+      if (s.params.base.style === "outline" && a?.designSize && a?.bodySize) {
+        return `${style} · design ${fmt(a.designSize)} mm · body ${fmt(a.bodySize)} mm`;
+      }
+      return `${style} · ${fmt(s.params.base.size)} mm`;
+    },
     controls: [
       {
         type: 'segmented',
@@ -594,6 +601,10 @@ function buildGroups(container) {
   const groups = [];
   const syncers = [];
   const controls = [];
+  // Last built assembly + last state, so group status lines can quote resolved sizes.
+  let lastAssembly = null;
+  let lastState = null;
+  const statusSyncers = [];
 
   GROUPS.forEach((def) => {
     const bodyId = `ck-group-${def.id}`;
@@ -613,9 +624,11 @@ function buildGroups(container) {
       body.append(ctl.root);
       syncers.push((s, meta) => ctl.sync(s.params, meta));
     }
-    syncers.push((s) => {
-      statusEl.textContent = def.status(s);
-    });
+    const syncStatus = (s) => {
+      statusEl.textContent = def.status(s, lastAssembly);
+    };
+    statusSyncers.push(syncStatus);
+    syncers.push(syncStatus);
 
     const card = h('div', { class: 'swatch swatch-white' }, h('span', { class: 'hole', 'aria-hidden': 'true' }), h('h3', {}, head), body);
     const el = h('section', { class: 'hanger group', dataset: { group: def.id } }, h('span', { class: 'peg', 'aria-hidden': 'true' }), card);
@@ -654,8 +667,15 @@ function buildGroups(container) {
 
   return {
     open,
-    sync: (s, meta) => syncers.forEach((fn) => fn(s, meta)),
-    setAssembly: (assembly) => controls.forEach((c) => c.setAssembly?.(assembly)),
+    sync: (s, meta) => {
+      lastState = s;
+      syncers.forEach((fn) => fn(s, meta));
+    },
+    setAssembly: (assembly) => {
+      lastAssembly = assembly;
+      controls.forEach((c) => c.setAssembly?.(assembly));
+      if (lastState) statusSyncers.forEach((fn) => fn(lastState));
+    },
   };
 }
 

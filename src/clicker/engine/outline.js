@@ -12,17 +12,19 @@
 //   switch.pocket (the 15.6 mm MX flange) + 2*switchTolerance so the recess (cap + clearance)
 //   always clears the flange and upper housing, and the body always encloses the cavity
 //   below the plate, even for very narrow designs.
-//   Longest side of the body == base.size when fill == 100 (design long side is then
-//   size - 2*(margin + wall + clearance)). fill < 100 shrinks design and body together.
+//   base.size is the DESIGN's longest side (times design.fill %); the body grows around it:
+//   body long side = size + 2*(margin + wall + clearance) (e.g. 35 mm heart -> 45.6 mm body).
+//   When the design is narrower than the pocket envelope the cap is widened to it (warning).
 //
 // Preset styles ('circle' | 'square' | 'hexagon'):
-//   body   = preset with longest side == base.size
+//   body   = preset with longest side == base.size (here base.size IS the base)
 //   recess = preset inset by wall
 //   cap    = preset inset by wall + clearance
 //   design long side = (cap long side - 2*margin) * fill/100, clipped to the cap by CSG later.
+// The layout reports designSize / capSize / bodySize (mm, longest sides) for the UI.
 
 import * as THREE from 'three';
-import { rasterizeShapes, rasterizePolygonsEvenOdd, dilateMask, convexHull, squaredDistanceToValue, maskWithinDistance } from './raster.js';
+import { rasterizeShapes, rasterizePolygonsEvenOdd, dilateMask, convexHull, squaredDistanceToValue, maskWithinDistance, maskBounds } from './raster.js';
 import { traceBitmap, shapesBBox } from './trace.js';
 
 const WORK_PX = 1000; // px across the base's long side for the outline raster
@@ -231,18 +233,15 @@ export function computeLayout(spec, params, warnings = []) {
   let designShapes = [];
 
   if (style === 'outline') {
+    // base.size is the DESIGN's longest side (scaled by fill); cap, recess and body grow around it
     const pad = margin + wall + clearance;
-    const avail = size - 2 * pad;
-    if (avail < 2) {
-      warnings.push(`Base size ${size} mm is too small for margin + wall + clearance (${pad.toFixed(1)} mm per side); design was clamped to 2 mm.`);
-    }
-    designLong = Math.max(2, avail) * fill;
+    designLong = Math.max(2, size) * fill;
     const sUnit = designLongUnits > 0 ? designLong / designLongUnits : 1;
     designShapes = transformShapes(designUnit, (p) => ({ x: p.x * sUnit, y: p.y * sUnit }));
 
     // --- raster space -------------------------------------------------------------------
     const envBody = envelopeSide + 2 * (wall + clearance);
-    const extent = Math.max(size, envBody, designLong + 2 * pad);
+    const extent = Math.max(envBody, designLong + 2 * pad);
     const k = WORK_PX / extent; // px per mm
     const W = Math.ceil(extent * k) + 64;
     const H = W;
@@ -252,6 +251,17 @@ export function computeLayout(spec, params, warnings = []) {
     const designMask = rasterizeShapes(transformShapes(designShapes, toPx), W, H);
     let capMask = dilateMask(designMask, W, H, margin * k);
     const envPts = roundedRectPoints(envelopeSide / 2, envelopeSide / 2, envelopeCorner, 8).map(toPx);
+    // Warn when the design (+ margin) is narrower than the pocket envelope in either axis: the
+    // envelope then sticks out beyond the design outline. (Filling internal concavities near the
+    // centre - letter gaps, a heart's notch - is expected and silent: the switch sits there.)
+    const capBB = maskBounds(capMask, W, H);
+    if (capBB) {
+      const capW = (capBB.maxX - capBB.minX + 1) / k;
+      const capH = (capBB.maxY - capBB.minY + 1) / k;
+      if (capW < envelopeSide - 0.1 || capH < envelopeSide - 0.1) {
+        warnings.push(`The design is narrower than the switch pocket, so the cap is widened to ${envelopeSide.toFixed(1)} mm around it (the pocket envelope shows beyond the design outline).`);
+      }
+    }
     rasterizePolygonsEvenOdd([envPts], W, H, capMask);
 
     let capTraced = traceBitmap(capMask, W, H, OUTLINE_TRACE);
@@ -322,6 +332,9 @@ export function computeLayout(spec, params, warnings = []) {
     designLong: designShapes.length ? designLong : 0,
     capLong,
     baseLong: Math.max(bb.maxX - bb.minX, bb.maxY - bb.minY),
+    designSize: designShapes.length ? designLong : 0,
+    capSize: capLong,
+    bodySize: Math.max(bb.maxX - bb.minX, bb.maxY - bb.minY),
     bodyPoints,
     recessPoints: recessShape.getPoints(1),
     capPoints,
