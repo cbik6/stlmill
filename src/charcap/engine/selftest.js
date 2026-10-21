@@ -202,7 +202,25 @@ function report(label, result, params, expectFace) {
   // material outside the pocket but inside the footprint / foot reaches below the pocket ceiling
   const rimHit = hitFromBelow(cap.geometry, 9.0, 0);
   if (!real && params.underside !== 'hollow') check(rimHit !== null && rimHit >= -1e-3 && rimHit < a.travel - 1e-3, `${label}: underside outside the pocket is below the pocket ceiling (hit ${rimHit})`);
-  if (a.foot) console.log(`  foot: dia ${a.foot.diameter.toFixed(1)} x ${a.foot.height.toFixed(1)} mm plinth added`);
+  // pocket wall band (pocket side 8.1 .. 9.3) must reach the underside in both modes
+  const wallHit = hitFromBelow(cap.geometry, 8.6, 0);
+  check(wallHit !== null && Math.abs(wallHit) < 0.02, `${label}: pocket wall reaches z = 0 just outside the pocket (hit ${wallHit})`); // simplify(0.01) may shift faces by 10 um
+  if (a.foot) {
+    console.log(`  foot: dia ${a.foot.diameter.toFixed(1)} x ${a.foot.height.toFixed(1)} mm plinth added`);
+    // the plinth must really be in the cap: lowest `travel` band at least foot.diameter wide, min z = 0,
+    // and a flat ring at z = 0 on the four axes just inside the plinth edge
+    const pos = cap.geometry.attributes.position.array;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (let i = 0; i < pos.length; i += 3) {
+      if (pos[i + 2] > a.travel + 1e-6) continue;
+      minX = Math.min(minX, pos[i]); maxX = Math.max(maxX, pos[i]);
+      minY = Math.min(minY, pos[i + 1]); maxY = Math.max(maxY, pos[i + 1]);
+    }
+    check(maxX - minX >= a.foot.diameter - 0.1 && maxY - minY >= a.foot.diameter - 0.1, `${label}: lowest ${a.travel} mm band spans the foot (${(maxX - minX).toFixed(1)} x ${(maxY - minY).toFixed(1)} vs ${a.foot.diameter})`);
+    const rr = a.foot.diameter / 2 - 0.6;
+    const ring = [[rr, 0], [-rr, 0], [0, rr], [0, -rr]].map(([x, y]) => hitFromBelow(cap.geometry, x, y));
+    check(ring.every((h) => h !== null && Math.abs(h) < 0.02), `${label}: foot ring flat on z = 0 (hits ${ring.map((h) => h === null ? 'null' : h.toFixed(3)).join(' ')})`);
+  }
   if (face && a.face) console.log(`  face: ${a.face.method}, ${a.face.pieces} piece(s), ${a.face.dropped} fragment(s) dropped, depth band ${a.face.band} mm`);
   if (face) {
     const fb = extents(face.geometry);
@@ -239,7 +257,11 @@ for (const input of inputs) {
   // the smiley is one disc with holes: on the built-in samples, seen from their natural side, it must
   // come out as ONE coherent region (no islands on concavity floors)
   if (!/real print/.test(input.label)) check(r.assembly.face.pieces === 1, `${input.label}: face is one coherent piece (got ${r.assembly.face.pieces})`);
-  check(meshVolume(r.parts[0].geometry) + meshVolume(r.parts[1].geometry) < volFlat.get(input.label) - 50, `${input.label}: hollowing removed material (${(volFlat.get(input.label) - meshVolume(r.parts[0].geometry) - meshVolume(r.parts[1].geometry)).toFixed(0)} mm^3)`);
+  {
+    const removed = volFlat.get(input.label) - meshVolume(r.parts[0].geometry) - meshVolume(r.parts[1].geometry);
+    const negligible = r.warnings.some((w) => /Hollow cavity is negligible/.test(w));
+    check(removed > 50 || negligible, `${input.label}: hollowing removed material (${removed.toFixed(0)} mm^3) or warned that it is negligible`);
+  }
   await validate3MF(r, `${input.label} hollow+face+body`, true, true);
 
   // C. flat + face (the other direction), no body; face + cap volumes add up to the plain cap

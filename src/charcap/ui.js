@@ -291,26 +291,27 @@ export function rangeControl(def, { onInput, onChange, read } = {}) {
   const ro = createReadout({ intDigits: intDigitsOf(def.min, def.max), decimals, signed: !!def.signed, unit: def.unit });
   const label = h('label', { for: id }, def.label);
 
-  // 'auto' rows (the Clicker's treatment): the engine derives the value when the param holds the
-  // sentinel (`def.auto.value`, e.g. 0 or 'auto'); the tiles show what it resolves to, and the
-  // AUTO pill (pressed = automatic) returns a hand-set number to automatic again.
+  // 'auto' rows: the engine derives the value when the param holds the sentinel (`def.auto.value`,
+  // e.g. 0 or 'auto'). While automatic the label reads "Max depth · auto" and the tiles show the
+  // resolved value dimmed (the disabled-tile style); dragging the slider pins a number, and a quiet
+  // "Auto" text button in the label cell hands the value back to the engine.
   let isAuto = false;
   let resolved = def.min; // last resolved value
   let shown = resolved;
   let lastState = null;
   let lastAssembly = null;
-  let autoPill = null;
+  let autoNote = null;
+  let autoBtn = null;
   if (def.auto) {
-    autoPill = h('button', { type: 'button', class: 'auto-pill', 'aria-pressed': 'false', title: 'Let the engine choose this value' }, 'Auto');
-    autoPill.addEventListener('click', () => {
-      if (isAuto) setParam(def.path, shown); // pin the current number
-      else setParam(def.path, def.auto.value);
-    });
+    autoNote = h('span', { class: 'ctl-auto-note' }, '· auto');
+    label.append(' ', autoNote); // the space stays outside the nowrap span so a narrow cell breaks as "Max depth" / "· auto"
+    autoBtn = h('button', { type: 'button', class: 'ctl-quiet', title: 'Let the engine choose this value' }, 'Auto');
+    autoBtn.addEventListener('click', () => setParam(def.path, def.auto.value));
   }
-  const labelCell = autoPill ? h('div', { class: 'ctl-labelwrap' }, label, autoPill) : label;
+  const labelCell = autoBtn ? h('div', { class: 'ctl-labelwrap' }, label, autoBtn) : label;
   const root = h(
     'div',
-    { class: autoPill ? 'ctl ctl-range ctl-auto' : 'ctl ctl-range' },
+    { class: autoBtn ? 'ctl ctl-range ctl-auto' : 'ctl ctl-range' },
     labelCell,
     range,
     ro.root,
@@ -345,7 +346,8 @@ export function rangeControl(def, { onInput, onChange, read } = {}) {
       lastState = s;
       isAuto = !!def.auto && (v === def.auto.value || !isNum(v));
       root.classList.toggle('is-auto', isAuto);
-      if (autoPill) autoPill.setAttribute('aria-pressed', isAuto ? 'true' : 'false');
+      if (autoNote) autoNote.hidden = !isAuto;
+      if (autoBtn) autoBtn.hidden = isAuto;
       if (isAuto) resolve();
       show(isAuto ? resolved : v, { cascade: !!meta?.cascade });
       const enabled = enabledFor(def, s);

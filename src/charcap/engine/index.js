@@ -225,7 +225,7 @@ function flatUnderside(m, flatHeight, height, warnings) {
  * than `wall` where the character narrows), open at the bottom, keeping a solid core of radius
  * `coreR` around the socket. Returns the hollowed manifold (input is disposed).
  */
-function hollowUnderside(m, { wall, hollowDepth, coreR, height, warnings }) {
+function hollowUnderside(m, { wall, hollowDepth, coreR, keepPolygons = [], height, warnings }) {
   const { Manifold, CrossSection } = manifoldApi();
   const w = Math.max(0.8, wall);
   let H = Math.max(1, hollowDepth);
@@ -259,17 +259,35 @@ function hollowUnderside(m, { wall, hollowDepth, coreR, height, warnings }) {
   }
   let cavity = layers.length === 1 ? layers[0] : Manifold.union(layers);
   if (layers.length > 1) for (const l of layers) l.delete();
-  const core = cylinder(coreR, -2, H + 1);
-  const cavity2 = cavity.subtract(core);
-  dispose(cavity, core);
+  // keep the stem core and the wall band around the housing pocket solid (otherwise the cavity
+  // eats the pocket wall and any foot plinth, leaving only the outer shell)
+  let keep = cylinder(coreR, -2, H + 1);
+  for (const poly of keepPolygons) {
+    if (!poly || poly.length < 3) continue;
+    const band = prism(poly, -2, H + 1);
+    const k = keep.add(band);
+    dispose(keep, band);
+    keep = k;
+  }
+  const cavity2 = cavity.subtract(keep);
+  dispose(cavity, keep);
+  const before = m.volume();
   const out = m.subtract(cavity2);
   dispose(cavity2, m);
+  if (before - out.volume() < 5) warnings.push('Hollow cavity is negligible: the character is barely wider than the housing pocket walls, so the underside stays solid.');
   return out;
 }
 
 // ---------------------------------------------------------------------------------------------
 // housing pocket (travel)
 // ---------------------------------------------------------------------------------------------
+
+/** Pocket outline grown by housing.minWall: the material band the hollow cavity must leave around the pocket. */
+function pocketWallPolygon(pocket, params) {
+  const w = Math.max(0.4, params.housing.minWall);
+  const side = pocket.side + 2 * w;
+  return roundedRectPoints(side / 2, side / 2, Math.min(params.housing.cornerRadius + w, side / 2), 8);
+}
 
 /** Rounded-square pocket polygon for the MX upper housing (+ clearance per side). */
 function pocketPolygon(params) {
@@ -364,6 +382,7 @@ export async function makeCap(geometry, userParams = {}) {
   // (unioned now, before the face split, so the face never overlaps it).
   const pocket = pocketPolygon(params);
   let foot = null;
+  let footPts = null;
   if (travel > 0.05) {
     const { CrossSection, Manifold } = manifoldApi();
     const minWall = Math.max(0.4, params.housing.minWall);
@@ -377,7 +396,7 @@ export async function makeCap(geometry, userParams = {}) {
       const h = travel + 1.0;
       // rounded square concentric with the pocket (corners offset by the same margin), 0.5 mm draft
       const margin = (D - pocket.side) / 2;
-      const footPts = roundedRectPoints(D / 2, D / 2, Math.min(params.housing.cornerRadius + margin, D / 2), 10);
+      footPts = roundedRectPoints(D / 2, D / 2, Math.min(params.housing.cornerRadius + margin, D / 2), 10);
       const plinth = Manifold.extrude(footPts.map((q) => [q.x, q.y]), h, 1, 0, [(D - 1) / D, (D - 1) / D]);
       const withFoot = m.add(plinth);
       dispose(plinth, m);
@@ -417,7 +436,10 @@ export async function makeCap(geometry, userParams = {}) {
   if (hollow) {
     if (faceM && params.wallThickness < f.depth + 0.4) warnings.push(`Wall thickness ${params.wallThickness} mm is close to the face depth ${f.depth} mm; the cavity may touch the inlay.`);
     if (params.hollowDepth < travel) warnings.push(`hollowDepth ${params.hollowDepth} mm is less than the travel ${travel} mm; the housing pocket is cut to ${travel} mm anyway.`);
-    capM = hollowUnderside(capM, { wall: params.wallThickness, hollowDepth: params.hollowDepth, coreR: bossR, height: capHeight, warnings });
+    // keep the pocket wall band and the foot plinth (its job is to carry the pocket wall) solid
+    const keepPolygons = travel > 0.05 ? [pocketWallPolygon(pocket, params)] : [];
+    if (footPts) keepPolygons.push(footPts);
+    capM = hollowUnderside(capM, { wall: params.wallThickness, hollowDepth: params.hollowDepth, coreR: bossR, keepPolygons, height: capHeight, warnings });
   }
   // housing pocket (both modes): the fixed MX upper housing must fit under the cap while it travels
   if (travel > 0.05) {
