@@ -285,6 +285,9 @@ export class Viewer {
         color: new THREE.Color(part.color || '#999999'),
         roughness: 0.55,
         metalness: 0.05,
+        // A flush inlay shares its boundary surface with the cap; pull it a hair toward
+        // the camera so the two don't z-fight along the edge.
+        ...(part.name === 'design' ? { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 } : {}),
       });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.castShadow = true;
