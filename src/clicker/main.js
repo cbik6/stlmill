@@ -166,17 +166,99 @@ function setExporting(on, label) {
   btn3mf.firstChild.textContent = on ? `${label}… ` : 'Download 3MF ';
 }
 
-async function runExport(kind) {
+// ---- name slip: every download is named by the user before the file is written
+const nameForm = $('ck-name-form');
+const nameInput = $('ck-name');
+const nameExt = $('ck-name-ext');
+const nameErr = $('ck-name-err');
+const nameCancel = $('ck-name-cancel');
+let pendingKind = null;
+
+/** File-safe stem: letters, digits, dash, underscore; spaces become dashes. */
+function cleanStem(raw) {
+  return String(raw || '')
+    .trim()
+    .replace(/\.(3mf|zip|stl)$/i, '')
+    .replace(/\s+/g, '-')
+    .replace(/[^\w-]+/g, '')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+}
+
+/** A sensible default built from what is on the cap and how big it is. */
+function suggestedStem() {
+  const s = state.source;
+  let base = '';
+  if (s.kind === 'text') base = s.text?.text || '';
+  else if (s.kind === 'svg') base = (s.svg?.fileName || '').replace(/\.svg$/i, '');
+  else if (s.kind === 'image') base = (s.image?.fileName || '').replace(/\.[a-z0-9]+$/i, '');
+  else if (s.kind === 'sample') base = s.sample?.id || '';
+  const size = Math.round(Number(state.params.base.size) || 0);
+  const stem = cleanStem(base).toLowerCase();
+  return `${stem ? `${stem}-` : ''}clicker-${size}mm`;
+}
+
+function extFor(kind) {
+  return kind === '3mf' ? '.3mf' : '-stl.zip';
+}
+
+function openNamer(kind) {
+  pendingKind = kind;
+  nameExt.textContent = extFor(kind);
+  nameErr.hidden = true;
+  if (nameForm.hidden || !nameInput.value.trim()) nameInput.value = suggestedStem();
+  nameForm.hidden = false;
+  nameInput.focus();
+  nameInput.select();
+}
+
+function closeNamer() {
+  pendingKind = null;
+  nameForm.hidden = true;
+  nameErr.hidden = true;
+}
+
+nameCancel.addEventListener('click', () => {
+  closeNamer();
+  btn3mf.focus();
+});
+nameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closeNamer();
+    btn3mf.focus();
+  }
+});
+nameForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const stem = cleanStem(nameInput.value);
+  if (!stem) {
+    nameErr.textContent = 'Give the file a name first (letters, numbers, dashes).';
+    nameErr.hidden = false;
+    nameInput.focus();
+    return;
+  }
+  const kind = pendingKind;
+  closeNamer();
+  writeExport(kind, stem);
+});
+
+function runExport(kind) {
   if (exporting) return;
   if (!session.getResult()) {
     setSlip(['Nothing to download yet: the first build has not finished.']);
     return;
   }
-  const size = Math.round(Number(state.params.base.size) || 0);
+  openNamer(kind);
+}
+
+async function writeExport(kind, stem) {
+  if (exporting) return;
   setExporting(true, kind === '3mf' ? 'Preparing 3MF' : 'Zipping STL');
   try {
-    if (kind === '3mf') await session.exportThreeMF(`clicker-${size}mm.3mf`);
-    else await session.exportStlZip(`clicker-${size}mm-stl.zip`);
+    if (kind === '3mf') await session.exportThreeMF(`${stem}.3mf`);
+    else await session.exportStlZip(`${stem}-stl.zip`);
   } catch (err) {
     console.error('[clicker] export failed', err);
     setSlip([`Couldn't make the ${kind === '3mf' ? '3MF' : 'STL zip'}: ${err?.message || err}`]);

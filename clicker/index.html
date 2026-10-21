@@ -188,6 +188,17 @@
         <div class="dock" role="group" aria-label="Export">
           <ul class="dock-slip" id="ck-slip" role="status" aria-live="polite" hidden></ul>
           <p class="dock-summary" id="ck-summary"><strong>— × — × — mm</strong>Building the first clicker…</p>
+          <!-- Name slip: every download goes through here so the file is named before it is written -->
+          <form class="dock-name" id="ck-name-form" hidden novalidate>
+            <label class="dock-name-label" for="ck-name">Name this file</label>
+            <div class="dock-name-row">
+              <input type="text" id="ck-name" class="dock-name-input" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="60" placeholder="my-clicker" />
+              <span class="dock-name-ext" id="ck-name-ext" aria-hidden="true">.3mf</span>
+              <button type="submit" class="dock-name-go" id="ck-name-go">Save</button>
+              <button type="button" class="dock-quiet" id="ck-name-cancel">Cancel</button>
+            </div>
+            <p class="dock-name-err" id="ck-name-err" role="alert" hidden></p>
+          </form>
           <div class="dock-foot">
             <button type="button" class="dock-quiet" id="ck-download-stl">STL as a zip</button>
           </div>

@@ -1188,6 +1188,7 @@ body.board {
   grid-template-columns: auto minmax(0, 1fr);
   grid-template-areas:
     "summary icons"
+    "name name"
     "tab foot";
   gap: 6px 16px;
   min-width: 380px;
@@ -1309,6 +1310,85 @@ body.board {
 .dock :focus-visible {
   outline: 3px solid var(--ink);
   outline-offset: 2px;
+}
+
+/* Name slip: a paper strip across the dock, shown between pressing Download and the file being written */
+.dock-name {
+  grid-area: name;
+  margin: 2px 0 4px;
+  padding: 10px 12px 10px;
+  border: 2px solid var(--ink);
+  border-radius: 6px;
+  background: var(--pla-white);
+}
+.dock-name[hidden] {
+  display: none;
+}
+.dock-name-label {
+  display: block;
+  margin-bottom: 6px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.dock-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.dock-name-input {
+  flex: 1 1 120px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+}
+.dock-name-input:focus {
+  outline: 3px solid var(--brand-orange);
+  outline-offset: 1px;
+}
+.dock-name-ext {
+  flex: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+.dock-name-go {
+  flex: none;
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--tab-text);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.dock-name-go:hover {
+  background: var(--brand-orange);
+}
+.dock-name-err {
+  margin: 6px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #b3261e;
+}
+.dock-name-err[hidden] {
+  display: none;
 }
 
 .dock-icons {
@@ -1522,7 +1602,8 @@ body.board {
     grid-template-columns: minmax(0, 1fr) auto auto;
     grid-template-areas:
       "summary tab icons"
-      "summary foot icons";
+      "summary foot icons"
+      "name name name";
     gap: 2px 10px;
     min-width: 0;
     max-width: none;
