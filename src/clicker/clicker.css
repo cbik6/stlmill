@@ -730,50 +730,36 @@ body.board {
   font-weight: 600;
 }
 
-/* 'Auto' rows: the label carries an ink pill; pressed = the engine chooses the value */
+/* 'Auto' rows: while automatic the label reads "… · auto" and the tiles dim; once a number
+   is set, a quiet "Auto" text button (the dock-quiet recipe) sits right in the label cell. */
 .ctl-labelwrap {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
 }
 
-.auto-pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 18px;
-  padding: 0 7px;
-  border: 2px solid var(--ink);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ink);
-  font-family: var(--font-display);
+.auto-suffix {
   font-weight: 600;
-  font-size: 10px;
-  line-height: 1;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  color: var(--white-ink-2);
 }
 
-.auto-pill:hover {
-  background: rgba(28, 27, 25, 0.1);
+.auto-suffix[hidden] {
+  display: none;
 }
 
-.auto-pill[aria-pressed="true"] {
-  background: var(--ink);
-  color: var(--orange-emb-hi);
-}
-
-.auto-pill[aria-pressed="true"]:hover {
-  color: var(--pla-white);
-}
-
-.ctl.is-disabled .auto-pill {
+.ctl.is-auto .tile {
   opacity: 0.45;
-  cursor: not-allowed;
+}
+
+.auto-reset {
+  align-self: flex-end;
+  font-size: 12px;
+}
+
+.auto-reset[hidden] {
+  display: none;
 }
 
 /* Range on a card: ink track, orange thumb with an ink rim. No hover scale. */
