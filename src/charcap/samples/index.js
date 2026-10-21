@@ -44,8 +44,8 @@ function pumpkin() {
   stem.delete();
   const withStem = body.add(bent);
   dispose(body, bent);
-  // flat resting ring like the real print: cut 1.4 mm off the bottom
-  const cut = withStem.trimByPlane([0, 0, 1], -R * squash + 1.4);
+  // flat resting base like the real print (dia ~25 of 36): cut 3.5 mm off the bottom
+  const cut = withStem.trimByPlane([0, 0, 1], -R * squash + 3.5);
   withStem.delete();
   return settle(cut);
 }
@@ -79,9 +79,11 @@ function skull() {
   const face = Manifold.sphere(9, 48).scale([1.1, 1, 1.25]).translate([0, -4.5, -7.5]);
   const head = cranium.add(face);
   dispose(cranium, face);
-  const eyeL = Manifold.sphere(3.3, 32).scale([1, 0.9, 1.15]).translate([-5, -11.5, -1]);
+  // shallow eye hollows and a nose dimple (about 1.3 mm deep): deep sockets would split a projected
+  // face design into islands on their floors
+  const eyeL = Manifold.sphere(3.6, 32).scale([1, 0.8, 1.1]).translate([-5, -14.3, -1]);
   const eyeR = eyeL.translate([10, 0, 0]);
-  const nose = Manifold.cube([2.4, 5, 3.6], true).translate([0, -13, -5.5]);
+  const nose = Manifold.sphere(2.0, 24).scale([0.7, 1, 1.1]).translate([0, -14.6, -5.5]);
   const cut = head.subtract(eyeL).subtract(eyeR).subtract(nose);
   dispose(head, eyeL, eyeR, nose);
   const flat = cut.trimByPlane([0, 0, 1], -12.5);

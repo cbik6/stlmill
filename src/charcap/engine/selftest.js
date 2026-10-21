@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { DOMParser as XmlDomParser } from '@xmldom/xmldom';
 import JSZip from 'jszip';
+import { MeshBVH } from 'three-mesh-bvh';
 
 // --- DOMParser shim for SVGLoader / 3MFLoader (querySelector(All) with 'tag' or 'tag tag' selectors)
 function addQS(node) {
@@ -52,6 +53,7 @@ const {
 const { SAMPLES, buildSample } = await import('../samples/index.js');
 const { openEdgeCount, meshVolume, hitFromBelow, hitsAlongZ, extents, triangleCount } = await import('./meshcheck.js');
 const { geometryToStl } = await import('../../clicker/engine/export.js');
+const THREE = await import('three');
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SCRATCH = 'C:/Users/clark/AppData/Local/Temp/claude/C--Users-clark-Claude-Projects-3D-Modeling-Apps/affad541-57e5-4c13-9eda-5f777e9441a1/scratchpad/pumpkin/x/3D/Objects/';
@@ -157,7 +159,7 @@ function report(label, result, params, expectFace) {
   const a = result.assembly;
   const tm = a.timings;
   console.log(`\n${label}`);
-  console.log(`  parts: ${result.parts.map((p) => `${p.name} ${a.triangles[p.name]} tris`).join(', ')} | socket ${a.socketMode} ${a.socketDepth} mm, boss dia ${a.bossDiameter.toFixed(1)} to z ${a.bossTop.toFixed(1)}${a.bossAdded ? ' (added)' : ''}`);
+  console.log(`  parts: ${result.parts.map((p) => `${p.name} ${a.triangles[p.name]} tris`).join(', ')} | socket ${a.socketMode} ${a.socketDepth} mm, pocket ${a.pocketSide} x ${a.travel} deep, boss dia ${a.bossDiameter.toFixed(1)} to z ${a.bossTop.toFixed(1)}${a.bossAdded ? ' (added)' : ''}`);
   console.log(`  timings: ${Object.entries(tm).map(([k, v]) => `${k} ${v}`).join(', ')} ms`);
   if (result.warnings.length) console.log(`  warnings: ${result.warnings.join(' | ')}`);
   const cap = result.parts.find((p) => p.name === 'cap');
@@ -186,6 +188,22 @@ function report(label, result, params, expectFace) {
   const depth = a.socketDepth;
   const hit = hitFromBelow(cap.geometry, 0.05, 0.03);
   check(hit !== null && Math.abs(hit - depth) < 1e-3, `${label}: socket ceiling at z = ${depth} above the origin (ray hit ${hit})`);
+  // housing pocket + boss: the boss underside is on z = 0, the pocket ceiling at `travel`
+  const real = /real print/.test(label);
+  check(Math.abs(a.travel - DEFAULT_PARAMS.travel) < 1e-9, `${label}: travel ${a.travel}`);
+  check(Math.abs(a.pocketSide - (DEFAULT_PARAMS.housing.pocket + 2 * DEFAULT_PARAMS.fit.clearance)) < 1e-9, `${label}: pocket side 16.2`);
+  check(depth <= a.travel && a.bossTop >= a.travel + 0.6 - 1e-9, `${label}: socket ${depth} inside the travel ${a.travel}, boss top ${a.bossTop.toFixed(1)} fused above the pocket`);
+  const bossHit = hitFromBelow(cap.geometry, a.bossDiameter / 2 - 0.3, 0);
+  check(bossHit !== null && Math.abs(bossHit) < 1e-3, `${label}: boss underside on z = 0 (ray at r ${(a.bossDiameter / 2 - 0.3).toFixed(1)} hit ${bossHit})`);
+  const pocketHit = hitFromBelow(cap.geometry, 6.5, 6.5);
+  if (real) check(pocketHit !== null && pocketHit >= a.travel - 1e-3, `${label}: pocket clears the housing at (6.5, 6.5) (hit ${pocketHit})`);
+  else if (params.underside === 'hollow') check(pocketHit !== null && pocketHit >= a.travel - 1e-3, `${label}: hollow + pocket >= travel at (6.5, 6.5) (hit ${pocketHit})`);
+  else check(pocketHit !== null && Math.abs(pocketHit - a.travel) < 1e-3, `${label}: pocket ceiling at z = travel at (6.5, 6.5) (hit ${pocketHit})`);
+  // material outside the pocket but inside the footprint / foot reaches below the pocket ceiling
+  const rimHit = hitFromBelow(cap.geometry, 9.0, 0);
+  if (!real && params.underside !== 'hollow') check(rimHit !== null && rimHit >= -1e-3 && rimHit < a.travel - 1e-3, `${label}: underside outside the pocket is below the pocket ceiling (hit ${rimHit})`);
+  if (a.foot) console.log(`  foot: dia ${a.foot.diameter.toFixed(1)} x ${a.foot.height.toFixed(1)} mm plinth added`);
+  if (face && a.face) console.log(`  face: ${a.face.method}, ${a.face.pieces} piece(s), ${a.face.dropped} fragment(s) dropped, depth band ${a.face.band} mm`);
   if (face) {
     const fb = extents(face.geometry);
     check(fb.min.z >= -1e-3 && fb.max.z <= a.height + 1e-3 && Math.abs(fb.min.x) <= params.width / 2 + 1e-3 && Math.abs(fb.max.x) <= params.width / 2 + 1e-3, `${label}: face inside the character bounds`);
@@ -218,6 +236,9 @@ for (const input of inputs) {
   // B. hollow + face (front/top) + body
   let p = { ...base, underside: 'hollow', face: faceP, withBody: true };
   r = report(`${input.label} / hollow + face ${input.faceDirection} + body`, await makeCap(input.geometry, p), mergeParams(p), true);
+  // the smiley is one disc with holes: on the built-in samples, seen from their natural side, it must
+  // come out as ONE coherent region (no islands on concavity floors)
+  if (!/real print/.test(input.label)) check(r.assembly.face.pieces === 1, `${input.label}: face is one coherent piece (got ${r.assembly.face.pieces})`);
   check(meshVolume(r.parts[0].geometry) + meshVolume(r.parts[1].geometry) < volFlat.get(input.label) - 50, `${input.label}: hollowing removed material (${(volFlat.get(input.label) - meshVolume(r.parts[0].geometry) - meshVolume(r.parts[1].geometry)).toFixed(0)} mm^3)`);
   await validate3MF(r, `${input.label} hollow+face+body`, true, true);
 
@@ -267,6 +288,62 @@ for (const input of inputs) {
   check(Math.abs(Math.max(extents(r2.parts[0].geometry).x, extents(r2.parts[0].geometry).y) - DEFAULT_PARAMS.width) < 0.05, 'non-numeric width falls back to the default');
   const normalized = normalizeCharacter(g, { width: 20 });
   check(Math.abs(Math.max(normalized.bounds.x, normalized.bounds.y) - 20) < 1e-3 && Math.abs(normalized.bounds.min.z) < 1e-6, 'normalizeCharacter scales to width and rests on z = 0');
+}
+
+// small character: pocket walls too thin -> foot plinth ('auto') or warning ('never')
+{
+  const g = inputs.find((i) => i.label === 'sample ghost').geometry;
+  const r = await makeCap(g, { width: 17, foot: 'never' });
+  check(r.warnings.some((w) => /too small for the switch housing pocket/.test(w)), `17 mm character with foot 'never' warns about the housing pocket (${r.warnings.join(' | ')})`);
+  for (const p of r.parts) check(openEdgeCount(p.geometry) === 0, 'tiny character still watertight');
+  const r2 = await makeCap(g, { width: 17 });
+  check(r2.assembly.foot && Math.abs(r2.assembly.foot.diameter - 18.6) < 1e-6 && Math.abs(r2.assembly.foot.height - 5.2) < 1e-6, `17 mm character gets an 18.6 x 5.2 mm foot (${JSON.stringify(r2.assembly.foot)})`);
+  check(!r2.warnings.some((w) => /too small/.test(w)) && r2.warnings.some((w) => /Added a 18.6 mm foot/.test(w)), '17 mm character: foot note instead of a too-small warning');
+  check(Math.abs(hitFromBelow(r2.parts[0].geometry, 9.0, 0)) < 1e-3 && hitFromBelow(r2.parts[0].geometry, 6.5, 6.5) >= 4.2 - 1e-3, '17 mm character: foot underside on z = 0, pocket clears 4.2 inside it');
+  for (const p of r2.parts) check(openEdgeCount(p.geometry) === 0, 'footed character watertight');
+  const pumpkin = inputs.find((i) => i.label === 'sample pumpkin').geometry;
+  const r3 = await makeCap(pumpkin, { width: 36 });
+  check(r3.assembly.foot === null && !r3.warnings.some((w) => /housing pocket/.test(w)), `pumpkin sample (24.6 mm base) needs no foot and no pocket warning (${r3.warnings.join(' | ')})`);
+  const heart = inputs.find((i) => i.label === 'sample heart').geometry;
+  const r4 = await makeCap(heart, { width: 32, foot: 'always' });
+  check(r4.assembly.foot && r4.assembly.foot.diameter === 22, `foot 'always' on the heart: plinth capped at 22 mm (${JSON.stringify(r4.assembly.foot)})`);
+}
+
+// face edge quality: 'axis' (projection-axis skin) vs 'cone' (front-facing cone skin) on the pumpkin sample.
+// Boundary vertices = face vertices shared with the cap that lie on the character's outer surface,
+// i.e. the visible inlay outline. Fewer, with fewer pieces/slivers, means a cleaner edge.
+{
+  const g = inputs.find((i) => i.label === 'sample pumpkin').geometry;
+  const outer = normalizeCharacter(g, { width: 36 }).geometry;
+  const bvh = new MeshBVH(outer);
+  const key = (x, y, z) => `${Math.round(x * 1e4)},${Math.round(y * 1e4)},${Math.round(z * 1e4)}`;
+  const target = {};
+  const measure = (r) => {
+    const cap = r.parts[0].geometry.attributes.position.array;
+    const keys = new Set();
+    for (let i = 0; i < cap.length; i += 3) keys.add(key(cap[i], cap[i + 1], cap[i + 2]));
+    const f = r.parts[1].geometry.attributes.position.array;
+    let shared = 0, boundary = 0;
+    const pt = new THREE.Vector3();
+    for (let i = 0; i < f.length; i += 3) {
+      if (!keys.has(key(f[i], f[i + 1], f[i + 2]))) continue;
+      shared++;
+      pt.set(f[i], f[i + 1], f[i + 2]);
+      const hit = bvh.closestPointToPoint(pt, target, 0, 0.01);
+      if (hit && hit.distance < 2e-3) boundary++;
+    }
+    return { verts: f.length / 3, shared, boundary, pieces: r.assembly.face.pieces, dropped: r.assembly.face.dropped, ms: r.assembly.timings.face, tris: r.assembly.triangles.face };
+  };
+  const res = {};
+  for (const method of ['axis', 'cone']) {
+    const r = await makeCap(g, { width: 36, face: { spec: smiley, direction: 'front', width: 45, method } });
+    for (const p of r.parts) check(openEdgeCount(p.geometry) === 0, `face method ${method}: ${p.name} watertight`);
+    res[method] = measure(r);
+    const m = res[method];
+    console.log(`\nface edge (${method}): ${m.tris} tris, ${m.verts} verts, ${m.shared} shared with cap, ${m.boundary} on the visible outline, ${m.pieces} piece(s), ${m.dropped} sliver(s) dropped, ${m.ms} ms`);
+  }
+  check(res.cone.boundary <= res.axis.boundary, `cone edge has no more outline vertices than axis (${res.cone.boundary} vs ${res.axis.boundary})`);
+  check(res.cone.pieces <= res.axis.pieces, `cone has no more pieces than axis (${res.cone.pieces} vs ${res.axis.pieces})`);
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'} in ${((Date.now() - t0) / 1000).toFixed(1)} s`);

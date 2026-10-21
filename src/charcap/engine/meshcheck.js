@@ -70,7 +70,11 @@ export function hitsAlongZ(geometry, x, y) {
     if (Math.abs(area) < 1e-12) return;
     out.push((az * d2 + bz * d3 + cz * d1) / area);
   });
-  return out.sort((a, b) => a - b);
+  out.sort((a, b) => a - b);
+  // a ray through a shared edge / vertex hits both triangles: keep one crossing
+  const dedup = [];
+  for (const z of out) if (!dedup.length || z - dedup[dedup.length - 1] > 1e-6) dedup.push(z);
+  return dedup;
 }
 
 /** Lowest z hit by a vertical ray through (x, y), or null. */

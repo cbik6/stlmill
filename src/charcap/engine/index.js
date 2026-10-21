@@ -8,7 +8,9 @@
 //   samples: buildSample(name) in ../samples/index.js
 //
 // Part = { name: 'cap' | 'face' | 'body', geometry: THREE.BufferGeometry (mm, Z up), color, print }
-//   cap   : the sculpted character, bottom on z = 0, socket opening at the origin on the underside.
+//   cap   : the sculpted character, bottom on z = 0. Its underside has a rounded-square pocket for the
+//           MX upper housing (`travel` deep) with the stem boss standing in it; the socket opens at
+//           the origin on z = 0, so the cap's underside rests on the housing top and can travel down.
 //   face  : the two-colour inlay filler; shares its frame with the cap (flush with the surface).
 //   body  : the clicker engine's switch holder, resting on z = 0 in its own frame. The cap sits at
 //           z = assembly.capZ in the body frame (same semantics as the clicker: cap bottom on the
@@ -22,7 +24,8 @@
 import * as THREE from 'three';
 import { MX, buildBody, resolveHeights, socketPolygons } from '../../clicker/engine/solids.js';
 import { mergeParams as mergeClickerParams } from '../../clicker/engine/index.js';
-import { initBooleans, manifoldApi, toManifold, fromManifold, cylinder, loft, dispose } from './csg.js';
+import { roundedRectPoints } from '../../clicker/engine/outline.js';
+import { initBooleans, manifoldApi, toManifold, fromManifold, cylinder, prism, loft, dispose } from './csg.js';
 import { buildFace } from './face.js';
 import { footprintLayout } from './body.js';
 import { triangleCount, hitsAlongZ, extents } from './meshcheck.js';
@@ -40,17 +43,24 @@ export const DEFAULT_PARAMS = {
   flatHeight: 0 /* 'flat': cut the character at this z (mm from its own bottom) and rest it on the cut */,
   wallThickness: 2 /* 'hollow': wall left around the cavity */,
   hollowDepth: 6 /* 'hollow': cavity height from the bottom; a solid core stays around the socket */,
+  // Travel: the cap's underside rests on the MX upper housing (fixed), so a keycap-style pocket for
+  // the housing is cut into the underside and only the stem boss stands in it. Pressing the cap
+  // moves it down `travel` mm over the housing.
+  travel: 4.2 /* housing pocket depth from the underside, mm (MX travel 4.0 + 0.2) */,
+  housing: { pocket: 15.6 /* MX flange / upper housing side; + 2*fit.clearance = pocket side (16.2) */, cornerRadius: 1.5, minWall: 1.2 /* minimum material around the pocket */, footMax: 22 /* largest foot plinth diameter */ },
+  foot: 'auto' /* 'auto': union a foot plinth (dia >= pocket + 2*minWall, height travel + 1) when the lower `travel` band is too narrow | 'always' | 'never' (warn only) */,
   // Stem socket, measured on Clark's printed caps (ghost: tapered cross 6.1->4.8 x 4 deep in a dia 6 boss;
   // pumpkin: round dia 5 glue hole). Same three modes and numbers as the clicker engine.
   socket: {
     mode: 'tapered' /* 'tapered' (cross lofted opening -> ceiling, press fit) | 'cross' (straight) | 'round' (glue) */,
-    depth: 4.0 /* blind depth from the bottom, mm */,
+    depth: 3.6 /* blind depth from the underside, mm; the MX stem tip then sits 0.6 below the pocket ceiling */,
     crossWidth: 4.1 /* cross width at the ceiling (MX stem 4.1) */,
     crossThickness: 1.3 /* arm thickness at the ceiling (MX stem 1.3) */,
     opening: 4.6 /* cross width at the opening ('tapered' only) */,
     roundDiameter: 5.0 /* 'round' only */,
     fit: 0 /* added to crossWidth / crossThickness / roundDiameter; negative = tighter */,
-    bossWall: 1.5 /* minimum material around the socket; a boss of dia (socket + 2*bossWall) is unioned when needed */,
+    bossDiameter: 6.4 /* stem boss standing in the housing pocket (ghost print: dia 6) */,
+    bossWall: 0.9 /* minimum material around the socket opening: boss dia = max(bossDiameter, opening + 2*bossWall) */,
   },
   face: {
     spec: null /* DesignSpec from makeDesignFromSvg / Text / Image, or null */,
@@ -58,6 +68,10 @@ export const DEFAULT_PARAMS = {
     depth: 0.8 /* inlay thickness along the projection axis, mm */,
     width: 50 /* design long side as % of the character width */,
     offset: { x: 0, y: 0 } /* mm shift in the projection plane (y = up on the front, +Y on the top) */,
+    method: 'cone' /* 'cone': only patches facing the viewer (crisp cutoff) | 'axis': plain projection-axis skin (baseline) */,
+    minFacing: 0.3 /* 'cone': keep surface where dot(normal, -axis) > minFacing */,
+    maxDepth: 0 /* mm band behind the nearest point along the axis that may carry the face; 0 = 40 % of the extent */,
+    minPieceRatio: 0.1 /* drop detached face pieces whose in-plane bbox area is below this fraction of the largest */,
   },
   withBody: false /* add the clicker engine's switch holder under the cap */,
   body: { height: 18.5, rimHeight: 7.0, wall: 2.5, size: 0 /* 0 = fit the character footprint; else a circle of this diameter */ },
@@ -160,7 +174,7 @@ function socketCutter(socket, depth) {
  * vertical columns at the origin and around the boss radius; for each, take the first solid
  * interval that reaches above the socket ceiling and remember where it starts.
  */
-function bossTopFor(geometry, depth, bossR, height, warnings) {
+function bossTopFor(geometry, clear, bossR, height, warnings) {
   const cols = [[0.03, 0.02]];
   for (let k = 0; k < 6; k++) {
     const a = (k / 6) * Math.PI * 2 + 0.1;
@@ -173,7 +187,9 @@ function bossTopFor(geometry, depth, bossR, height, warnings) {
     let found = false;
     for (let i = 0; i + 1 < hits.length; i += 2) {
       const zin = hits[i], zout = hits[i + 1];
-      if (zout >= depth + 0.5) {
+      const last = i + 3 >= hits.length;
+      // a shelf thinner than 1.5 mm (e.g. a foot plinth top over a glue hole) is not enough to fuse into
+      if (zout >= clear + 0.5 && (zout - zin >= 1.5 || last)) {
         need = Math.max(need, zin);
         found = true;
         break;
@@ -182,9 +198,9 @@ function bossTopFor(geometry, depth, bossR, height, warnings) {
     if (!found) missing++;
   }
   if (missing) warnings.push('The character has little or no material above the stem socket; the boss may be exposed. Check the underside before printing.');
-  let top = Math.max(depth + 1.0, need + 1.0);
+  let top = Math.max(clear + 1.0, need + 1.0);
   if (top > height - 0.6) {
-    top = Math.max(depth + 0.6, height - 0.6);
+    top = Math.max(clear + 0.6, height - 0.6);
     warnings.push(`Character is only ${height.toFixed(1)} mm tall; the stem boss was shortened to ${top.toFixed(1)} mm.`);
   }
   return top;
@@ -252,6 +268,53 @@ function hollowUnderside(m, { wall, hollowDepth, coreR, height, warnings }) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// housing pocket (travel)
+// ---------------------------------------------------------------------------------------------
+
+/** Rounded-square pocket polygon for the MX upper housing (+ clearance per side). */
+function pocketPolygon(params) {
+  const side = params.housing.pocket + 2 * Math.max(0, params.fit.clearance);
+  return { points: roundedRectPoints(side / 2, side / 2, Math.min(params.housing.cornerRadius, side / 2), 8), side };
+}
+
+/** Outer contours only (holes filled) of a cross-section, as a new CrossSection. */
+function outerContours(cs) {
+  const { CrossSection } = manifoldApi();
+  const polys = cs.toPolygons().filter((poly) => {
+    let a = 0;
+    for (let i = 0; i < poly.length; i++) {
+      const p = poly[i], q = poly[(i + 1) % poly.length];
+      a += p[0] * q[1] - q[0] * p[1];
+    }
+    return a > 0;
+  });
+  return new CrossSection(polys, 'Positive');
+}
+
+/**
+ * Can the character hold `minWall` of material around the housing pocket? Its OUTER outline at
+ * three heights within the pocket, inset by minWall, must contain the pocket (internal cavities
+ * such as a hollow skirt are fine: the housing simply sits inside them).
+ * Returns { ok, footprint } where footprint = long side of the outline at z = travel.
+ */
+function checkPocketWalls(m, pocketCS, travel, minWall) {
+  const { CrossSection } = manifoldApi();
+  let ok = true;
+  let footprint = 0;
+  for (const z of [Math.min(0.4, travel / 2), travel / 2, travel - 0.05]) {
+    const sl = m.slice(z);
+    const outer = outerContours(sl);
+    const b = outer.bounds();
+    footprint = Math.max(b.max[0] - b.min[0], b.max[1] - b.min[1]);
+    const inset = outer.offset(-minWall, 'Round', 2, 8);
+    const left = CrossSection.difference(pocketCS, inset);
+    if (left.area() > 0.5) ok = false; // mm^2; grazing / slightly uneven outlines leave tiny slivers
+    dispose(sl, outer, inset, left);
+  }
+  return { ok, footprint };
+}
+
+// ---------------------------------------------------------------------------------------------
 // makeCap
 // ---------------------------------------------------------------------------------------------
 
@@ -278,13 +341,52 @@ export async function makeCap(geometry, userParams = {}) {
   const t2 = now();
   const s = params.socket;
   const sp = socketPolygons(socketSwitchParams(s));
-  const bossR = sp.extent / 2 + Math.max(0.5, s.bossWall);
+  const minBoss = sp.extent + 2 * Math.max(0.5, s.bossWall);
+  let bossD = Math.max(1, s.bossDiameter);
+  if (bossD < minBoss - 1e-9) {
+    bossD = minBoss;
+    warnings.push(`Stem boss widened to ${bossD.toFixed(1)} mm to keep a ${s.bossWall} mm wall around the ${sp.mode} socket.`);
+  }
+  const bossR = bossD / 2;
+  let travel = Math.max(0, params.travel);
+  if (travel > height - 2.5) {
+    travel = Math.max(0, height - 2.5);
+    warnings.push(`Travel pocket reduced to ${travel.toFixed(1)} mm: the character is only ${height.toFixed(1)} mm tall.`);
+  }
   const depth = Math.max(1, Math.min(s.depth, height - 1.5));
   if (depth !== s.depth) warnings.push(`Socket depth clamped to ${depth.toFixed(1)} mm (character height ${height.toFixed(1)} mm).`);
   const hollow = params.underside === 'hollow';
   if (!hollow) {
     if (params.underside !== 'flat') warnings.push(`Unknown underside "${params.underside}", using "flat".`);
     m = flatUnderside(m, params.flatHeight, height, warnings);
+  }
+  // A character whose lower `travel` band is narrower than pocket + 2*minWall gets a foot plinth
+  // (unioned now, before the face split, so the face never overlaps it).
+  const pocket = pocketPolygon(params);
+  let foot = null;
+  if (travel > 0.05) {
+    const { CrossSection, Manifold } = manifoldApi();
+    const minWall = Math.max(0.4, params.housing.minWall);
+    const pocketCS = new CrossSection([pocket.points.map((q) => [q.x, q.y])], 'Positive');
+    const walls = checkPocketWalls(m, pocketCS, travel, minWall);
+    pocketCS.delete();
+    const needD = pocket.side + 2 * minWall;
+    const mode = ['auto', 'always', 'never'].includes(params.foot) ? params.foot : 'auto';
+    if (mode === 'always' || (mode === 'auto' && !walls.ok)) {
+      const D = Math.min(Math.max(needD, params.housing.footMax), Math.max(needD, walls.footprint));
+      const h = travel + 1.0;
+      // rounded square concentric with the pocket (corners offset by the same margin), 0.5 mm draft
+      const margin = (D - pocket.side) / 2;
+      const footPts = roundedRectPoints(D / 2, D / 2, Math.min(params.housing.cornerRadius + margin, D / 2), 10);
+      const plinth = Manifold.extrude(footPts.map((q) => [q.x, q.y]), h, 1, 0, [(D - 1) / D, (D - 1) / D]);
+      const withFoot = m.add(plinth);
+      dispose(plinth, m);
+      m = withFoot;
+      foot = { diameter: Math.round(D * 100) / 100, height: h };
+      if (mode === 'auto') warnings.push(`Added a ${D.toFixed(1)} mm foot under the character so the switch housing pocket (${pocket.side} mm + ${minWall} mm walls) fits.`);
+    } else if (!walls.ok) {
+      warnings.push(`Character is too small for the switch housing pocket (needs about ${needD.toFixed(1)} mm across its lower ${travel} mm); the walls around the pocket are thinner than ${minWall} mm or missing. Set foot to 'auto' to add a plinth.`);
+    }
   }
   const outer = fromManifold(m); // outer surface before any cavity: bounds + boss probing
   const outerBounds = extents(outer);
@@ -293,6 +395,7 @@ export async function makeCap(geometry, userParams = {}) {
   // 3. face inlay: split the exterior skin off while the character is still solid, so cavity
   //    walls and the socket never get a "face" layer
   let faceM = null;
+  let faceStats = null;
   let capM = m;
   const f = params.face;
   if (f.spec && Array.isArray(f.spec.shapes) && f.spec.shapes.length) {
@@ -303,6 +406,7 @@ export async function makeCap(geometry, userParams = {}) {
       m.delete();
       capM = res.cap;
       faceM = res.face;
+      faceStats = res.stats;
     }
     lap('face', t);
     await tick();
@@ -312,15 +416,23 @@ export async function makeCap(geometry, userParams = {}) {
   //    never reaches the 0.8 mm face)
   if (hollow) {
     if (faceM && params.wallThickness < f.depth + 0.4) warnings.push(`Wall thickness ${params.wallThickness} mm is close to the face depth ${f.depth} mm; the cavity may touch the inlay.`);
+    if (params.hollowDepth < travel) warnings.push(`hollowDepth ${params.hollowDepth} mm is less than the travel ${travel} mm; the housing pocket is cut to ${travel} mm anyway.`);
     capM = hollowUnderside(capM, { wall: params.wallThickness, hollowDepth: params.hollowDepth, coreR: bossR, height: capHeight, warnings });
+  }
+  // housing pocket (both modes): the fixed MX upper housing must fit under the cap while it travels
+  if (travel > 0.05) {
+    const cutter = prism(pocket.points, -1, travel);
+    const cut = capM.subtract(cutter);
+    dispose(cutter, capM);
+    capM = cut;
   }
   timings.underside = Math.round((now() - t2 - (timings.face || 0)) * 10) / 10;
   await tick();
 
   // 5. boss + socket (cap only)
   t = now();
-  const probe = hollow ? fromManifold(capM) : outer;
-  const bossTop = bossTopFor(probe, depth, bossR, capHeight, warnings);
+  const probe = travel > 0.05 || hollow ? fromManifold(capM) : outer;
+  const bossTop = bossTopFor(probe, Math.max(depth, travel), bossR, capHeight, warnings);
   const volBefore = capM.volume();
   const boss = cylinder(bossR, 0, bossTop);
   const withBoss = capM.add(boss);
@@ -398,6 +510,9 @@ export async function makeCap(geometry, userParams = {}) {
       capZ,
       socketDepth: depth,
       socketMode,
+      travel,
+      pocketSide: pocket.side,
+      foot,
       bossDiameter: bossR * 2,
       bossTop,
       bossAdded,
@@ -406,6 +521,7 @@ export async function makeCap(geometry, userParams = {}) {
       body: heights ? { plateTopZ: heights.plateTopZ, bodyHeight: heights.height, bounds: extents(bodyGeom) } : null,
       timings,
       triangles: Object.fromEntries(parts.map((p) => [p.name, triangleCount(p.geometry)])),
+      face: faceStats,
     },
   };
 }
