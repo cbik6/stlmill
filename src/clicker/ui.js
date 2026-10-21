@@ -211,11 +211,11 @@ export const GROUPS = [
         ],
       },
       { type: 'range', path: 'switch.socketOpening', label: 'Socket opening', unit: 'mm', min: 4.2, max: 7, step: 0.1, when: (p) => p.switch.socketMode === 'tapered' },
-      { type: 'range', path: 'switch.roundDiameter', label: 'Hole diameter', unit: 'mm', min: 4.6, max: 5.8, step: 0.1, when: (p) => p.switch.socketMode === 'round' },
+      { type: 'range', path: 'switch.roundDiameter', label: 'Hole Ø', unit: 'mm', min: 4.6, max: 5.8, step: 0.1, when: (p) => p.switch.socketMode === 'round' },
       { type: 'range', path: 'switch.stemHeight', label: 'Socket depth', unit: 'mm', min: 3, max: 5, step: 0.1 },
       // The stem boss stands inside the cap's housing pocket; it must fit inside the switch's
       // stem collar (dustproof/BOX switches). Travel is how far the housing rises into the pocket.
-      { type: 'range', path: 'switch.bossDiameter', label: 'Boss diameter', unit: 'mm', min: 5.4, max: 8, step: 0.1 },
+      { type: 'range', path: 'switch.bossDiameter', label: 'Boss Ø', unit: 'mm', min: 5.4, max: 8, step: 0.1 },
       { type: 'range', path: 'switch.travel', label: 'Travel', unit: 'mm', min: 3.5, max: 5, step: 0.1 },
       { type: 'range', path: 'fit.clearance', label: 'Cap clearance', unit: 'mm', min: 0.1, max: 0.6, step: 0.05 },
       { type: 'range', path: 'cap.thickness', label: 'Cap thickness', unit: 'mm', min: 2, max: 8, step: 0.1 },

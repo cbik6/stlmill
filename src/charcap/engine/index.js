@@ -402,7 +402,7 @@ export async function makeCap(geometry, userParams = {}) {
       dispose(plinth, m);
       m = withFoot;
       foot = { diameter: Math.round(D * 100) / 100, height: h };
-      if (mode === 'auto') warnings.push(`Added a ${D.toFixed(1)} mm foot under the character so the switch housing pocket (${pocket.side} mm + ${minWall} mm walls) fits.`);
+      if (mode === 'auto') warnings.push(`Added a Ø${D.toFixed(1)} mm foot under the character so the switch housing pocket (${pocket.side} mm + ${minWall} mm walls) fits.`);
     } else if (!walls.ok) {
       warnings.push(`Character is too small for the switch housing pocket (needs about ${needD.toFixed(1)} mm across its lower ${travel} mm); the walls around the pocket are thinner than ${minWall} mm or missing. Set foot to 'auto' to add a plinth.`);
     }

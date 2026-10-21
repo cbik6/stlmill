@@ -194,7 +194,7 @@ export const GROUPS = [
       { type: 'range', path: 'socket.opening', label: 'Opening', unit: 'mm', min: 4.2, max: 5.2, step: 0.1, when: (p) => p.socket.mode === 'tapered' },
       { type: 'range', path: 'socket.roundDiameter', label: 'Hole Ø', unit: 'mm', min: 4.6, max: 5.8, step: 0.1, when: (p) => p.socket.mode === 'round' },
       { type: 'range', path: 'socket.depth', label: 'Depth', unit: 'mm', min: 3, max: 5, step: 0.1 },
-      { type: 'range', path: 'socket.bossDiameter', label: 'Boss diameter', unit: 'mm', min: 5.4, max: 8, step: 0.1, hint: 'Must fit inside the switch’s stem collar.' },
+      { type: 'range', path: 'socket.bossDiameter', label: 'Boss Ø', unit: 'mm', min: 5.4, max: 8, step: 0.1, hint: 'Must fit inside the switch’s stem collar.' },
       { type: 'range', path: 'socket.bossWall', label: 'Boss wall', unit: 'mm', min: 0.6, max: 3, step: 0.1 },
       { type: 'range', path: 'socket.fit', label: 'Fit', unit: 'mm', min: -0.2, max: 0.2, step: 0.05, signed: true, hint: 'Minus grips tighter, plus goes on easier.' },
     ],
