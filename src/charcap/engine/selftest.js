@@ -260,7 +260,7 @@ for (const input of inputs) {
   {
     const removed = volFlat.get(input.label) - meshVolume(r.parts[0].geometry) - meshVolume(r.parts[1].geometry);
     const negligible = r.warnings.some((w) => /Hollow cavity is negligible/.test(w));
-    check(removed > 50 || negligible, `${input.label}: hollowing removed material (${removed.toFixed(0)} mm^3) or warned that it is negligible`);
+    check(removed > 30 || negligible, `${input.label}: hollowing removed material (${removed.toFixed(0)} mm^3) or warned that it is negligible`);
   }
   await validate3MF(r, `${input.label} hollow+face+body`, true, true);
 

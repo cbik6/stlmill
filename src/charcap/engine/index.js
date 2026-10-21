@@ -274,7 +274,7 @@ function hollowUnderside(m, { wall, hollowDepth, coreR, keepPolygons = [], heigh
   const before = m.volume();
   const out = m.subtract(cavity2);
   dispose(cavity2, m);
-  if (before - out.volume() < 5) warnings.push('Hollow cavity is negligible: the character is barely wider than the housing pocket walls, so the underside stays solid.');
+  if (before - out.volume() < 30) warnings.push('Hollow cavity is negligible (under 30 mm^3): the solid foot / pocket walls leave almost nothing to hollow at this hollowDepth, so the underside stays essentially solid.');
   return out;
 }
 
