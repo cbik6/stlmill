@@ -20,7 +20,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { Brush, Evaluator, SUBTRACTION, ADDITION, INTERSECTION } from 'three-bvh-csg';
 import { pointsToShape, circlePoints, roundedRectPoints, CAP_POCKET_WALL, CAP_POCKET_CORNER } from './outline.js';
 import { repairMesh } from './repair.js';
-import { ShellBuilder, cleanPolygon, polygonContains, squarePolygon } from './shell.js';
+import { ShellBuilder, cleanPolygon, polygonContains, polygonArea, squarePolygon } from './shell.js';
 import { traceBitmap } from './trace.js';
 
 // Simplified Cherry MX reference dimensions (mm), plate-mount
@@ -432,6 +432,31 @@ export function stemShape(params) {
 }
 
 /**
+ * Nesting of traced design pieces ({ outer, holes }): each piece belongs either to the top level
+ * or to the smallest hole of another piece that contains it (a dot inside a ring, a letter inside
+ * a badge, ® marks). Returns { topLevel: piece[], inHole: Map<hole polygon, piece[]> }.
+ */
+export function nestDesignPieces(pieces) {
+  const holes = [];
+  for (const d of pieces) for (const h of d.holes) holes.push({ h, owner: d, area: Math.abs(polygonArea(h)) });
+  const topLevel = [];
+  const inHole = new Map();
+  for (const d of pieces) {
+    let best = null;
+    for (const e of holes) {
+      if (e.owner === d || (best && e.area >= best.area)) continue;
+      if (polygonContains(e.h, d.outer)) best = e;
+    }
+    if (!best) topLevel.push(d);
+    else {
+      if (!inHole.has(best.h)) inHole.set(best.h, []);
+      inHole.get(best.h).push(d);
+    }
+  }
+  return { topLevel, inHole };
+}
+
+/**
  * Cap (with stem socket) and optional raised design.
  * Returns { cap: BufferGeometry, design: BufferGeometry|null, engraveDepth }.
  */
@@ -510,12 +535,15 @@ export function buildCapParts(layout, params, warnings) {
     }
     if (engraveInShell) {
       const zf = t - engraveDepth;
-      b.face(P, designPolys.map((d) => d.outer), t, true); // top surface minus the design
+      // Nested logos (a letter inside a ring): a piece lying inside another piece's hole is cut
+      // from that island's top, not from the cap's top surface, or the two faces overlap.
+      const { topLevel, inHole } = nestDesignPieces(designPolys);
+      b.face(P, topLevel.map((d) => d.outer), t, true); // top surface minus the outermost pieces
       for (const d of designPolys) {
         b.face(d.outer, d.holes, zf, true); // engraving floor
         b.wall(d.outer, zf, t, true); // engraving side wall
         for (const h of d.holes) {
-          b.face(h, [], t, true); // island (counter) top
+          b.face(h, (inHole.get(h) || []).map((c) => c.outer), t, true); // island (counter) top, minus pieces inside it
           b.wall(h, zf, t, false); // island wall
         }
       }

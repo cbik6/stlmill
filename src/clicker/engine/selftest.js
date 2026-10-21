@@ -806,5 +806,31 @@ check(swKeep.boundingBox.min.z > keep.assembly.cavityBottomZ - 1e-6, 'keep: pins
   check(sq.assembly.switchCount === 2 && !sq.warnings.some((x) => /open edges|fell back/.test(x)), `a 60 mm square takes two forced switches (got ${sq.assembly.switchCount}; ${sq.warnings.join(' | ')})`);
 }
 
+// --- nested logos: a dot inside a ring inside a badge. Each piece is cut from the top it sits in
+// (cap top, or the island inside a hole), so the cap stays closed in inlay and engraved modes.
+{
+  const circ = (r, rev = false) => {
+    const p = [];
+    for (let i = 0; i < 64; i++) {
+      const a = ((rev ? -1 : 1) * i * Math.PI * 2) / 64;
+      p.push(new THREE.Vector2(r * Math.cos(a), r * Math.sin(a)));
+    }
+    return p;
+  };
+  const ringed = (ro, ri) => {
+    const s = new THREE.Shape(circ(ro));
+    s.holes.push(new THREE.Path(circ(ri, true)));
+    return s;
+  };
+  const nestSpec = makeDesignFromShapes([ringed(15, 12), ringed(10, 7), new THREE.Shape(circ(4))], 1);
+  for (const mode of ['inlay', 'engraved']) {
+    const r = await buildClicker({ design: { spec: nestSpec }, cap: { designMode: mode } });
+    check(!r.warnings.some((x) => /open edges|fell back/.test(x)), `nested logo (${mode}): closed cap, no fallback (${r.warnings.join(' | ') || 'no warnings'})`);
+    // ray through the centre dot: pocket floor 5.4 under the dot, not the island top 6.2
+    const hits = hitsAlongAxis(r.parts[1].geometry, 0.5, 0.5);
+    check(Math.abs(hits[hits.length - 1] - (r.assembly.capThickness - r.assembly.engraveDepth)) < 1e-6, `nested logo (${mode}): the centre dot is pocketed (top hit ${hits[hits.length - 1].toFixed(2)})`);
+  }
+}
+
 console.log(`\n${failures === 0 ? 'SELFTEST PASSED' : `SELFTEST FAILED (${failures})`} in ${Date.now() - t0} ms`);
 process.exit(failures === 0 ? 0 : 1);
