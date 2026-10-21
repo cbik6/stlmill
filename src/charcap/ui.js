@@ -141,10 +141,10 @@ export const GROUPS = [
   {
     id: 'underside',
     title: 'Underside',
-    status: (s) => {
+    status: (s, a) => {
       const p = s.params;
-      if (p.underside === 'hollow') return `Hollow · ${fmt(p.wallThickness)} mm wall`;
-      return p.flatHeight > 0 ? `Flat · cut ${fmt(p.flatHeight)} mm` : 'Flat';
+      const base = p.underside === 'hollow' ? `Hollow · ${fmt(p.wallThickness)} mm wall` : p.flatHeight > 0 ? `Flat · cut ${fmt(p.flatHeight)} mm` : 'Flat';
+      return a?.foot ? `${base} · foot` : base;
     },
     controls: [
       {
@@ -160,6 +160,19 @@ export const GROUPS = [
       { type: 'range', path: 'flatHeight', label: 'Cut off', unit: 'mm', min: 0, max: 10, step: 0.5, when: (p) => p.underside === 'flat' },
       { type: 'range', path: 'wallThickness', label: 'Wall', unit: 'mm', min: 1.2, max: 3, step: 0.1, when: (p) => p.underside === 'hollow' },
       { type: 'range', path: 'hollowDepth', label: 'Hollow depth', unit: 'mm', min: 3, max: 12, step: 0.5, when: (p) => p.underside === 'hollow' },
+      // The cap presses `travel` mm down over the switch housing; a character too narrow down there gets a foot plinth.
+      { type: 'range', path: 'travel', label: 'Travel', unit: 'mm', min: 3.5, max: 5, step: 0.1 },
+      {
+        type: 'segmented',
+        path: 'foot',
+        label: 'Foot',
+        options: [
+          ['auto', 'Auto'],
+          ['always', 'Always'],
+          ['never', 'Never'],
+        ],
+        hint: 'Adds a flat base when the character is too narrow for the switch.',
+      },
     ],
   },
   {
@@ -181,14 +194,20 @@ export const GROUPS = [
       { type: 'range', path: 'socket.opening', label: 'Opening', unit: 'mm', min: 4.2, max: 5.2, step: 0.1, when: (p) => p.socket.mode === 'tapered' },
       { type: 'range', path: 'socket.roundDiameter', label: 'Hole Ø', unit: 'mm', min: 4.6, max: 5.8, step: 0.1, when: (p) => p.socket.mode === 'round' },
       { type: 'range', path: 'socket.depth', label: 'Depth', unit: 'mm', min: 3, max: 5, step: 0.1 },
-      { type: 'range', path: 'socket.bossWall', label: 'Boss wall', unit: 'mm', min: 1, max: 3, step: 0.1 },
+      { type: 'range', path: 'socket.bossDiameter', label: 'Boss diameter', unit: 'mm', min: 5.4, max: 8, step: 0.1, hint: 'Must fit inside the switch’s stem collar.' },
+      { type: 'range', path: 'socket.bossWall', label: 'Boss wall', unit: 'mm', min: 0.6, max: 3, step: 0.1 },
       { type: 'range', path: 'socket.fit', label: 'Fit', unit: 'mm', min: -0.2, max: 0.2, step: 0.05, signed: true, hint: 'Minus grips tighter, plus goes on easier.' },
     ],
   },
   {
     id: 'face',
     title: 'Face',
-    status: (s) => (faceHasContent(s.source.face) ? `${s.params.face.direction === 'top' ? 'Top' : 'Front'} · ${fmt(s.params.face.width)} %` : 'No face'),
+    status: (s, a) => {
+      if (!faceHasContent(s.source.face)) return 'No face';
+      const base = `${s.params.face.direction === 'top' ? 'Top' : 'Front'} · ${fmt(s.params.face.width)} %`;
+      const n = a?.face?.pieces;
+      return Number.isFinite(n) ? `${base} · ${n} ${n === 1 ? 'piece' : 'pieces'}` : base;
+    },
     controls: [
       { type: 'face-source' },
       {
@@ -204,6 +223,27 @@ export const GROUPS = [
       { type: 'range', path: 'face.depth', label: 'Depth', unit: 'mm', min: 0.4, max: 1.5, step: 0.1 },
       { type: 'range', path: 'face.offset.x', label: 'Shift ←→', unit: 'mm', min: -10, max: 10, step: 0.5, signed: true },
       { type: 'range', path: 'face.offset.y', label: 'Shift ↑↓', unit: 'mm', min: -10, max: 10, step: 0.5, signed: true },
+      {
+        type: 'segmented',
+        path: 'face.method',
+        label: 'Inlay',
+        options: [
+          ['cone', 'Cone'],
+          ['axis', 'Axis'],
+        ],
+        hint: 'Cone keeps the inlay to the skin that faces you; Axis projects straight through.',
+      },
+      // 0 = automatic in the engine: max(3 × depth, 30 % of the design's width). The tiles show the resolved mm.
+      {
+        type: 'range',
+        path: 'face.maxDepth',
+        label: 'Max depth',
+        unit: 'mm',
+        min: 1,
+        max: 12,
+        step: 0.5,
+        auto: { value: 0, resolve: (p, a) => (Number.isFinite(a?.face?.behind) ? a.face.behind : Math.max(3 * p.face.depth, 0.3 * (p.face.width / 100) * p.width)) },
+      },
     ],
   },
   {
@@ -242,19 +282,53 @@ const decimalsOf = (step) => Math.max(0, Math.ceil(-Math.log10(step) - 1e-9));
 const intDigitsOf = (min, max) => String(Math.floor(Math.max(Math.abs(min), Math.abs(max)))).length;
 const enabledFor = (def, s) => (def.when ? !!def.when(s.params, s) : true);
 
+const isNum = (v) => Number.isFinite(Number(v)) && v !== '' && v !== null;
+
 export function rangeControl(def, { onInput, onChange, read } = {}) {
   const id = def.id || idFor(def.path);
   const decimals = decimalsOf(def.step);
   const range = h('input', { type: 'range', id, min: def.min, max: def.max, step: def.step });
   const ro = createReadout({ intDigits: intDigitsOf(def.min, def.max), decimals, signed: !!def.signed, unit: def.unit });
+  const label = h('label', { for: id }, def.label);
+
+  // 'auto' rows (the Clicker's treatment): the engine derives the value when the param holds the
+  // sentinel (`def.auto.value`, e.g. 0 or 'auto'); the tiles show what it resolves to, and the
+  // AUTO pill (pressed = automatic) returns a hand-set number to automatic again.
+  let isAuto = false;
+  let resolved = def.min; // last resolved value
+  let shown = resolved;
+  let lastState = null;
+  let lastAssembly = null;
+  let autoPill = null;
+  if (def.auto) {
+    autoPill = h('button', { type: 'button', class: 'auto-pill', 'aria-pressed': 'false', title: 'Let the engine choose this value' }, 'Auto');
+    autoPill.addEventListener('click', () => {
+      if (isAuto) setParam(def.path, shown); // pin the current number
+      else setParam(def.path, def.auto.value);
+    });
+  }
+  const labelCell = autoPill ? h('div', { class: 'ctl-labelwrap' }, label, autoPill) : label;
   const root = h(
     'div',
-    { class: 'ctl ctl-range' },
-    h('label', { for: id }, def.label),
+    { class: autoPill ? 'ctl ctl-range ctl-auto' : 'ctl ctl-range' },
+    labelCell,
     range,
     ro.root,
     def.hint ? h('span', { class: 'ctl-hint' }, def.hint) : null,
   );
+
+  function show(v, { cascade = false } = {}) {
+    shown = isNum(v) ? clamp(Number(v), def.min, def.max) : resolved;
+    if (range.value !== String(shown)) range.value = String(shown);
+    ro.set(shown, { cascade });
+    range.setAttribute('aria-valuetext', `${fmt(shown, decimals)} ${UNIT_WORDS[def.unit] ?? def.unit}${isAuto ? ', automatic' : ''}`.trim());
+  }
+
+  function resolve() {
+    if (!def.auto || !lastState) return;
+    const r = def.auto.resolve(lastState.params, lastAssembly);
+    if (isNum(r)) resolved = Number(r);
+  }
 
   range.addEventListener('input', () => {
     const v = clamp(Number(range.value), def.min, def.max);
@@ -268,12 +342,21 @@ export function rangeControl(def, { onInput, onChange, read } = {}) {
     sync(s, meta) {
       const v = read ? read(s) : get(s.params, def.path);
       if (v === undefined) return;
-      if (range.value !== String(v)) range.value = String(v);
-      ro.set(v, { cascade: !!meta?.cascade });
-      range.setAttribute('aria-valuetext', `${fmt(v, decimals)} ${UNIT_WORDS[def.unit] ?? def.unit}`.trim());
+      lastState = s;
+      isAuto = !!def.auto && (v === def.auto.value || !isNum(v));
+      root.classList.toggle('is-auto', isAuto);
+      if (autoPill) autoPill.setAttribute('aria-pressed', isAuto ? 'true' : 'false');
+      if (isAuto) resolve();
+      show(isAuto ? resolved : v, { cascade: !!meta?.cascade });
       const enabled = enabledFor(def, s);
       range.disabled = !enabled;
       root.classList.toggle('is-disabled', !enabled);
+    },
+    setAssembly(assembly) {
+      if (!def.auto) return;
+      lastAssembly = assembly;
+      resolve();
+      if (isAuto) show(resolved);
     },
   };
 }
@@ -294,7 +377,13 @@ function segmentedControl(def) {
       return h('label', { class: 'seg-item' }, input, h('span', {}, label));
     }),
   );
-  const root = h('div', { class: 'ctl ctl-stack' }, h('span', { class: 'ctl-label', 'aria-hidden': 'true' }, def.label), seg);
+  const root = h(
+    'div',
+    { class: 'ctl ctl-stack' },
+    h('span', { class: 'ctl-label', 'aria-hidden': 'true' }, def.label),
+    seg,
+    def.hint ? h('span', { class: 'ctl-hint' }, def.hint) : null,
+  );
   return {
     root,
     sync(s) {
@@ -644,6 +733,9 @@ const STORAGE_KEY = 'stlmill-character-cap-group';
 function buildGroups(container) {
   const groups = [];
   const syncers = [];
+  const statuses = [];
+  const controls = [];
+  let lastAssembly = null; // from the last build: feeds "· foot", "· 1 piece" and the auto rows
 
   GROUPS.forEach((def) => {
     const bodyId = `cc-group-${def.id}`;
@@ -660,11 +752,14 @@ function buildGroups(container) {
     for (const c of def.controls) {
       const ctl = FACTORIES[c.type](c);
       body.append(ctl.root);
+      controls.push(ctl);
       syncers.push((s, meta) => ctl.sync(s, meta));
     }
-    syncers.push((s) => {
-      statusEl.textContent = def.status(s);
-    });
+    const status = () => {
+      statusEl.textContent = def.status(state, lastAssembly);
+    };
+    statuses.push(status);
+    syncers.push(status);
 
     const card = h('div', { class: 'swatch swatch-white' }, h('span', { class: 'hole', 'aria-hidden': 'true' }), h('h3', {}, head), body);
     const el = h('section', { class: 'hanger group', dataset: { group: def.id } }, h('span', { class: 'peg', 'aria-hidden': 'true' }), card);
@@ -701,7 +796,15 @@ function buildGroups(container) {
   }
   if (initial) open(initial);
 
-  return { open, sync: (s, meta) => syncers.forEach((fn) => fn(s, meta)) };
+  return {
+    open,
+    sync: (s, meta) => syncers.forEach((fn) => fn(s, meta)),
+    setAssembly(assembly) {
+      lastAssembly = assembly || null;
+      controls.forEach((c) => c.setAssembly?.(lastAssembly));
+      statuses.forEach((fn) => fn());
+    },
+  };
 }
 
 // ------------------------------------------------------------------ foot pins
@@ -724,7 +827,7 @@ function wireFoot(rail) {
 const CASCADE_REASONS = new Set(['load', 'reset', 'undo', 'redo', 'replace']);
 
 /**
- * Wire the whole left column. Returns { setUploadError(msg), openGroup(id), tiles }.
+ * Wire the whole left column. Returns { setUploadError(msg), setAssembly(assembly), openGroup(id), tiles }.
  */
 export function initRail(rail, hooks = {}) {
   const header = wireHeader(rail, hooks);
@@ -743,6 +846,8 @@ export function initRail(rail, hooks = {}) {
 
   return {
     setUploadError: (msg) => header.setUploadError(msg),
+    // The last build's assembly (foot, face pieces, resolved auto values) feeds status lines and auto rows.
+    setAssembly: (assembly) => groups.setAssembly(assembly),
     openGroup: (id) => groups.open(id),
     tiles: header.tiles,
   };

@@ -303,6 +303,7 @@ const session = createSession({
     syncReferenceSwitch(result);
     showResult(result);
     setSummary(result);
+    rail.setAssembly(result.assembly);
     setSlip(result.warnings);
     if (result.character.kind === 'upload') rail.setUploadError(''); // this file built: it is no longer refused
     benchEmpty.hidden = true;

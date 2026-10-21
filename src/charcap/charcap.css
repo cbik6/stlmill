@@ -1848,3 +1848,49 @@ body.board {
   background: var(--ink);
   color: var(--pla-white);
 }
+
+/* ---- Auto rows: the engine derives the value; the pill hands it back (Clicker recipe) ---- */
+.ctl-labelwrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+}
+
+.auto-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 0 7px;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.auto-pill:hover {
+  background: rgba(28, 27, 25, 0.1);
+}
+
+.auto-pill[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--orange-emb-hi);
+}
+
+.auto-pill[aria-pressed="true"]:hover {
+  color: var(--pla-white);
+}
+
+.ctl.is-disabled .auto-pill {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
