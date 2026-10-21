@@ -167,20 +167,33 @@ export function resolveHeights(params, warnings) {
   if (cavityDepth < needed) {
     warnings.push(`Switch cavity is only ${cavityDepth.toFixed(1)} mm deep; the MX lower housing${sw.pins === 'clipped' ? '' : ' + pins'} need ${needed.toFixed(1)} mm, so the switch will not seat fully.`);
   }
-  const minH = FLOOR_MIN + cavityDepth + plate + rim;
+  // Centre locating post (3-pin switches, stays after the pins are snipped): when the cavity is
+  // shallower than housing + post, a round pocket (post + 2*clearance, post height + 0.2) is cut
+  // into the cavity floor and the floor grows so >= 1.0 mm stays solid beneath it.
+  const post = sw.post || {};
+  const postH = Number.isFinite(Number(post.height)) ? Math.max(0, Number(post.height)) : 0;
+  const postD = Number.isFinite(Number(post.diameter)) ? Math.max(0, Number(post.diameter)) : 0;
+  const postClear = Number.isFinite(Number(sw.postClearance)) ? Math.max(0, Number(sw.postClearance)) : 0;
+  const postNeedsPocket = postH > 0 && cavityDepth < MX.LOWER_HOUSING_DEPTH + postH + 0.2 - 1e-9;
+  const postPocketDepth = postNeedsPocket ? postH + 0.2 : 0;
+  const postPocketDiameter = postNeedsPocket ? postD + 2 * postClear : 0;
+  const floorMin = Math.max(FLOOR_MIN, postPocketDepth + 1.0);
+
+  const minH = floorMin + cavityDepth + plate + rim;
   let H = typeof body.height === 'number' && Number.isFinite(body.height) ? body.height : minH;
   if (H < minH - 1e-9) {
-    warnings.push(`Body height ${H} mm is too short for a ${FLOOR_MIN} mm floor + ${cavityDepth} mm cavity + ${plate} mm plate + ${rim} mm rim; raised to ${minH.toFixed(1)} mm.`);
+    warnings.push(`Body height ${H} mm is too short for a ${floorMin} mm floor${postNeedsPocket ? ' (incl. the switch post pocket)' : ''} + ${cavityDepth} mm cavity + ${plate} mm plate + ${rim} mm rim; raised to ${minH.toFixed(1)} mm.`);
     H = minH;
   }
   const plateTopZ = H - rim;
   const plateBottomZ = plateTopZ - plate;
   // defensive clamp: never cut through the floor
-  if (plateBottomZ - cavityDepth < FLOOR_MIN - 1e-9) {
-    cavityDepth = Math.max(0, plateBottomZ - FLOOR_MIN);
-    warnings.push(`Switch cavity depth clamped to ${cavityDepth.toFixed(1)} mm to keep a ${FLOOR_MIN} mm floor.`);
+  if (plateBottomZ - cavityDepth < floorMin - 1e-9) {
+    cavityDepth = Math.max(0, plateBottomZ - floorMin);
+    warnings.push(`Switch cavity depth clamped to ${cavityDepth.toFixed(1)} mm to keep a ${floorMin} mm floor.`);
   }
   const cavityBottomZ = plateBottomZ - cavityDepth;
+  const postPocketBottomZ = cavityBottomZ - postPocketDepth;
   // Seated cap (cap frame origin = underside plane = boss bottom): the boss bottom sits at the
   // housing top (the housing itself rises into the cap's pocket when pressed), and the socket
   // ceiling sits on the stem tip when the socket is shallower than the 3.6 mm stem.
@@ -196,6 +209,7 @@ export function resolveHeights(params, warnings) {
   return {
     height: H, rim, plate, cavityDepth, floor: cavityBottomZ, plateTopZ, plateBottomZ, cavityBottomZ, capZ, seat,
     bossBelow: 0, socketCeilingZ: sock.ceilingZ, travel: sock.travel, bossDiameter: sock.bossD, pocketSide: sock.pocketSide, capThickness: sock.t,
+    postPocketDepth, postPocketDiameter, postPocketBottomZ,
   };
 }
 
@@ -217,6 +231,20 @@ export function buildBody(layout, params, heights, warnings) {
   const hasCavity = cavityDepth > 0.05;
   const distinctCavity = hasCavity && cavitySide > sw.cutout + 0.05;
   const C = squarePolygon(cavitySide);
+  // centre-post pocket in the cavity floor (round, shell-built: ring floor + pocket wall + pocket floor)
+  const { postPocketDepth, postPocketDiameter, postPocketBottomZ } = heights;
+  const hasPost = hasCavity && postPocketDepth > 0.05 && postPocketDiameter > 0.2;
+  const PP = hasPost ? cleanPolygon(circlePoints(postPocketDiameter / 2, 48)) : null;
+  const cavityFloor = (b, floorPoly, z) => {
+    if (hasPost && polygonContains(floorPoly, PP, 0.3)) {
+      b.face(floorPoly, [PP], z, true); // cavity floor ring around the post pocket
+      b.wall(PP, postPocketBottomZ, z, true); // pocket wall (hole)
+      b.face(PP, [], postPocketBottomZ, true); // pocket floor (solid body below)
+    } else {
+      if (hasPost) warnings.push('Switch post pocket omitted: cavity too small for it.');
+      b.face(floorPoly, [], z, true);
+    }
+  };
 
   let g;
   if (!polygonContains(O, R, 0.05)) {
@@ -235,10 +263,10 @@ export function buildBody(layout, params, heights, warnings) {
         b.wall(K, plateBottomZ, plateTopZ, true); // cutout wall through the plate
         b.face(C, [K], plateBottomZ, false); // plate underside (cavity ceiling)
         b.wall(C, cavityBottomZ, plateBottomZ, true); // cavity wall
-        b.face(C, [], cavityBottomZ, true); // cavity floor
+        cavityFloor(b, C, cavityBottomZ); // cavity floor (with the centre-post pocket when needed)
       } else if (hasCavity) {
         b.wall(K, cavityBottomZ, plateTopZ, true);
-        b.face(K, [], cavityBottomZ, true);
+        cavityFloor(b, K, cavityBottomZ);
       } else {
         b.wall(K, plateBottomZ, plateTopZ, true);
         b.face(K, [], plateBottomZ, true);
@@ -266,6 +294,10 @@ function buildBodyCSG(layout, params, heights) {
   if (cavityDepth > 0.05) {
     const cavitySide = Math.max(sw.cutout, sw.cavity) + 2 * tol;
     g = csg(g, box(cavitySide, cavitySide, cavityBottomZ, plateBottomZ), SUBTRACTION);
+    if (heights.postPocketDepth > 0.05 && heights.postPocketDiameter > 0.2) {
+      const pocket = extrude(pointsToShape(circlePoints(heights.postPocketDiameter / 2, 48)), heights.postPocketDepth + 0.5, heights.postPocketBottomZ);
+      g = csg(g, pocket, SUBTRACTION);
+    }
   }
   g = csg(g, box(sw.cutout, sw.cutout, plateBottomZ - 0.5, plateTopZ + 0.5), SUBTRACTION);
   g = csg(g, extrude(layout.recessShape, height - plateTopZ + 1, plateTopZ), SUBTRACTION);
@@ -632,6 +664,16 @@ export function buildReferenceSwitchGeometry(params) {
   const parts = [];
   const housingBottom = plateBottom - MX.LOWER_HOUSING_DEPTH;
   parts.push(box(MX.LOWER_HOUSING, MX.LOWER_HOUSING, housingBottom, plateTop + 0.01));
+  // centre locating post (3-pin switches): stays after the pins are snipped, drawn in both modes
+  const post = sw.post || {};
+  const postH = Number(post.height) > 0 ? Number(post.height) : 0;
+  const postD = Number(post.diameter) > 0 ? Number(post.diameter) : 0;
+  if (postH > 0 && postD > 0) {
+    const cyl = new THREE.CylinderGeometry(postD / 2, postD / 2, postH + 0.01, 24, 1);
+    cyl.rotateX(Math.PI / 2);
+    cyl.translate(0, 0, housingBottom - postH / 2 + 0.005);
+    parts.push(cyl);
+  }
   // pins are drawn only when switch.pins === 'keep' (default 'clipped': pins snipped flush)
   for (const [px, py] of sw.pins === 'keep' ? MX.PINS : []) {
     // pin bottom exactly at housingBottom - PIN_LENGTH; the extra 0.01 overlaps into the housing

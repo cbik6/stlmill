@@ -60,8 +60,10 @@ export const DEFAULT_PARAMS = {
   // Seat = 6.6 + max(0, 3.6 - socket depth) = 6.6: the boss bottom (underside plane) sits on the
   // MX upper housing top with the stem tip at the socket ceiling; pressing drives the housing
   // 4.2 mm up into the pocket. rimHeight 7.0 = seat + 0.4 (cap underside 0.4 mm below the rim).
-  // height 'auto' = 1.5 floor + cavity (5.5 'clipped' / 8.5 'keep') + 1.5 plate + 7.0 rim
-  //   -> 15.5 mm with the defaults (18.5 with pins kept). A number overrides (raised if too short).
+  // height 'auto' = floor + cavity + 1.5 plate + 7.0 rim, where the floor is 1.5 mm, or 4.2 mm when
+  // the centre-post pocket (3.0 + 0.2 deep + 1.0 solid) is needed under a housing-only cavity:
+  //   'clipped' pins: 4.2 + 5.5 + 1.5 + 7.0 = 18.2 mm; 'keep': 1.5 + 8.5 + 1.5 + 7.0 = 18.5 mm.
+  // A number overrides (raised if too short).
   body: { height: 'auto', rimHeight: 7.0, wall: 2.5 },
   switch: {
     cutout: 14 /* nominal plate cutout, no tolerance (clips grip it) */,
@@ -69,6 +71,8 @@ export const DEFAULT_PARAMS = {
     cavity: 14.8 /* closed cavity under the plate for the lower housing + sprung clips (+2*switchTolerance) */,
     pins: 'clipped' /* 'clipped' (pins snipped flush, default) | 'keep' (deeper cavity for the pins) */,
     cavityDepth: 'auto' /* 'auto' = 5.5 ('clipped') / 8.5 ('keep') from the plate underside; a number overrides */,
+    post: { diameter: 4.0, height: 3.0 } /* centre locating post under the lower housing (3-pin switches) */,
+    postClearance: 0.3 /* radial clearance of the round post pocket cut into the cavity floor when the cavity is shallower than housing + post; the floor grows to keep 1.0 mm solid under it */,
     plateThickness: 1.5,
     // stem socket: copy of the measured "ghost" cap that fits the user's switches - a tapered
     // cross 6.0 wide at the underside opening narrowing to 4.6 at the ceiling, 4.0 deep; the arm
@@ -192,6 +196,9 @@ export async function buildClicker(userParams = {}) {
       bossDiameter: heights.bossDiameter,
       pocketSide: heights.pocketSide,
       capThickness: heights.capThickness,
+      postPocketDepth: heights.postPocketDepth,
+      postPocketDiameter: heights.postPocketDiameter,
+      postPocketBottomZ: heights.postPocketBottomZ,
       bodyHeight: heights.height,
       engraveDepth,
       capBounds,

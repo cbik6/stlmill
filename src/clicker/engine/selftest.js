@@ -434,7 +434,18 @@ check(DEFAULT_PARAMS.cap.designMode === 'inlay', 'default designMode is inlay');
 const base = report('outline / inlay (synthetic, defaults)', await buildClicker({ design: { spec } }));
 check(base.parts.map((p) => p.name).join(',') === 'body,cap,design', 'parts are body,cap,design');
 check(Math.abs(base.bounds.x - 35) < 0.3, `body long side ~35 mm (got ${base.bounds.x.toFixed(2)})`);
-check(DEFAULT_PARAMS.body.height === 'auto' && Math.abs(base.bounds.z - 15.5) < 1e-6, `body height auto -> 15.5 (got ${base.bounds.z})`);
+check(DEFAULT_PARAMS.body.height === 'auto' && Math.abs(base.bounds.z - 18.2) < 1e-6, `body height auto -> 18.2 (got ${base.bounds.z})`);
+// centre-post pocket in the cavity floor: pocket z 1.0 .. 4.2 (post 3.0 + 0.2), 1.0 mm solid floor below it
+check(Math.abs(base.assembly.floorThickness - 4.2) < 1e-6 && Math.abs(base.assembly.postPocketDepth - 3.2) < 1e-9 && Math.abs(base.assembly.postPocketDiameter - 4.6) < 1e-9 && Math.abs(base.assembly.postPocketBottomZ - 1.0) < 1e-6, `post pocket 4.6 dia x 3.2 from z 1.0 to 4.2, floor 4.2 (got floor ${base.assembly.floorThickness}, pocket ${base.assembly.postPocketDiameter} x ${base.assembly.postPocketDepth} from ${base.assembly.postPocketBottomZ})`);
+{
+  const bodyG0 = base.parts[0].geometry;
+  const origin = hitsAlongAxis(bodyG0, 0, 0); // function declaration, hoisted from the socket section
+  check(origin.length === 2 && Math.abs(origin[0]) < 1e-6 && Math.abs(origin[1] - 1.0) < 1e-6, `body ray at the origin: solid bottom at z = 0, post pocket floor at 1.0, then open through cutout/recess (got ${origin.map((z) => z.toFixed(2)).join(', ')})`);
+  const ring = hitsAlongAxis(bodyG0, 5, 0);
+  check(ring.length === 2 && Math.abs(ring[0]) < 1e-6 && Math.abs(ring[1] - 4.2) < 1e-6, `body ray at (5,0): bottom at 0 then the cavity floor ring at 4.2 (got ${ring.map((z) => z.toFixed(2)).join(', ')})`);
+  const pocketEdge = hitsAlongAxis(bodyG0, 2.0, 0);
+  check(pocketEdge.length === 2 && Math.abs(pocketEdge[1] - 1.0) < 1e-6, `body ray at (2,0) is inside the 4.6 pocket (got ${pocketEdge.map((z) => z.toFixed(2)).join(', ')})`);
+}
 check(base.parts[1].geometry.boundingBox.min.z === 0, `cap has no boss: nothing below z = 0 (min z ${base.parts[1].geometry.boundingBox.min.z})`);
 check(Math.abs(base.parts[1].geometry.boundingBox.max.z - 6.0) < 1e-6, 'cap top at z = thickness 6.0');
 check(Math.abs(base.parts[2].geometry.boundingBox.min.z - 5.2) < 1e-6 && Math.abs(base.parts[2].geometry.boundingBox.max.z - 6.0) < 1e-6, 'inlay filler spans thickness-designHeight .. thickness (5.2..6.0)');
@@ -486,7 +497,7 @@ check(raised.parts[1].print.flipX === false, 'raised cap prints cap-up');
   console.log(`  volumes: cap plain ${vRaisedCap.toFixed(2)}, cap pocketed ${vInlayCap.toFixed(2)}, pocket ${pocket.toFixed(2)}, filler ${vFiller.toFixed(2)} mm^3`);
 }
 const asm = base.assembly;
-check(Math.abs(asm.floorThickness - 1.5) < 1e-6, `floor thickness 1.5 (got ${asm.floorThickness})`);
+check(Math.abs(asm.floorThickness - 4.2) < 1e-6, `floor thickness 4.2 with the post pocket (got ${asm.floorThickness})`);
 check(DEFAULT_PARAMS.switch.pins === 'clipped' && DEFAULT_PARAMS.switch.cavityDepth === 'auto' && Math.abs(asm.cavityDepth - 5.5) < 1e-6, `pins clipped -> cavity depth 5.5 (got ${asm.cavityDepth})`);
 check(Math.abs(asm.plateTopZ - (asm.bodyHeight - DEFAULT_PARAMS.body.rimHeight)) < 1e-6, 'plate top z = height - rim');
 check(Math.abs(asm.seat - (6.6 + Math.max(0, 3.6 - DEFAULT_PARAMS.switch.stemHeight))) < 1e-9 && Math.abs(asm.seat - 6.6) < 1e-9, `seat = 6.6 + max(0, 3.6 - socket 3.6) = 6.6: boss bottom on the housing top (got ${asm.seat})`);
@@ -494,10 +505,14 @@ check(Math.abs(asm.capZ - (asm.plateTopZ + asm.seat)) < 1e-6, 'capZ = plateTopZ 
 check(Math.abs(asm.capZ - (asm.bodyHeight - 0.4)) < 1e-6, `cap underside seats 0.4 mm below the rim (capZ ${asm.capZ}, height ${asm.bodyHeight})`);
 check(DEFAULT_PARAMS.body.rimHeight === 7.0 && DEFAULT_PARAMS.cap.thickness === 6.0 && DEFAULT_PARAMS.cap.designHeight === 0.8 && DEFAULT_PARAMS.switch.stemHeight === 3.6 && DEFAULT_PARAMS.switch.travel === 4.2 && DEFAULT_PARAMS.switch.bossDiameter === 6.4, 'defaults: rim 7.0, cap 6.0 / 0.8, socket 3.6, travel 4.2, boss 6.4');
 // the cap must enclose the 16.2 housing pocket + (1.2 wall + 0.3 pad) all round (19.2), so the body is 19.2 + 2 * 2.8 = 24.8 across its narrow side
-check(Math.abs(asm.bodyHeight - 15.5) < 1e-6 && Math.abs(base.bounds.x - 35) < 0.1 && Math.abs(base.bounds.y - 24.8) < 0.15, `default bounds ~35 x 24.8 x 15.5 (got ${base.bounds.x.toFixed(2)} x ${base.bounds.y.toFixed(2)} x ${base.bounds.z.toFixed(2)})`);
+check(Math.abs(asm.bodyHeight - 18.2) < 1e-6 && Math.abs(base.bounds.x - 35) < 0.1 && Math.abs(base.bounds.y - 24.8) < 0.15, `default bounds ~35 x 24.8 x 18.2 (got ${base.bounds.x.toFixed(2)} x ${base.bounds.y.toFixed(2)} x ${base.bounds.z.toFixed(2)})`);
 // pins kept: deeper cavity, taller body, same seat
 const keep = report('pins kept (cavity 8.5)', await buildClicker({ design: { spec }, switch: { pins: 'keep' } }), { quiet: true });
-check(Math.abs(keep.assembly.cavityDepth - 8.5) < 1e-6 && Math.abs(keep.assembly.bodyHeight - 18.5) < 1e-6 && Math.abs(keep.assembly.floorThickness - 1.5) < 1e-6, `pins keep -> cavity 8.5, height 18.5 (got ${keep.assembly.cavityDepth}, ${keep.assembly.bodyHeight})`);
+check(Math.abs(keep.assembly.cavityDepth - 8.5) < 1e-6 && Math.abs(keep.assembly.bodyHeight - 18.5) < 1e-6 && Math.abs(keep.assembly.floorThickness - 1.5) < 1e-6 && keep.assembly.postPocketDepth === 0, `pins keep -> cavity 8.5 swallows the post (no pocket), height 18.5, floor 1.5 (got ${keep.assembly.cavityDepth}, ${keep.assembly.bodyHeight}, pocket ${keep.assembly.postPocketDepth})`);
+{
+  const o = hitsAlongAxis(keep.parts[0].geometry, 0, 0);
+  check(o.length === 2 && Math.abs(o[0]) < 1e-6 && Math.abs(o[1] - 1.5) < 1e-6, `pins keep: plain 1.5 mm floor at the origin (got ${o.map((z) => z.toFixed(2)).join(', ')})`);
+}
 check(Math.abs(keep.assembly.capZ - (keep.assembly.bodyHeight - 0.4)) < 1e-6 && keep.warnings.length === 0, 'pins keep: cap still 0.4 below the rim, no warnings');
 const fixedH = await buildClicker({ design: { spec }, body: { height: 20 } });
 check(Math.abs(fixedH.assembly.bodyHeight - 20) < 1e-6 && Math.abs(fixedH.assembly.floorThickness - (20 - DEFAULT_PARAMS.body.rimHeight - 1.5 - 5.5)) < 1e-6, 'numeric body.height is honoured (extra goes into the floor)');
@@ -565,7 +580,7 @@ const short = report('short body (height 6, rim 2)', await buildClicker({ design
 check(short.warnings.some((w) => /too short/.test(w)), 'short body warning');
 const shallow = report('shallow cavity (4 mm)', await buildClicker({ design: { spec }, switch: { cavityDepth: 4 } }));
 check(shallow.warnings.some((w) => /cavity is only/.test(w)), 'shallow cavity warning');
-check(Math.abs(shallow.assembly.cavityDepth - 4) < 1e-6 && Math.abs(shallow.assembly.floorThickness - 1.5) < 1e-6 && Math.abs(shallow.assembly.bodyHeight - (1.5 + 4 + 1.5 + DEFAULT_PARAMS.body.rimHeight)) < 1e-6, `numeric cavityDepth 4 honoured; auto height follows (${shallow.assembly.bodyHeight})`);
+check(Math.abs(shallow.assembly.cavityDepth - 4) < 1e-6 && Math.abs(shallow.assembly.floorThickness - 4.2) < 1e-6 && Math.abs(shallow.assembly.bodyHeight - (4.2 + 4 + 1.5 + DEFAULT_PARAMS.body.rimHeight)) < 1e-6, `numeric cavityDepth 4 honoured; post pocket floor 4.2, auto height follows (${shallow.assembly.bodyHeight})`);
 const tiny = report('tiny circle (size 22)', await buildClicker({ design: { spec }, base: { style: 'circle', size: 22 } }));
 check(tiny.warnings.some((w) => /too small/.test(w)), 'tiny base warning');
 
@@ -701,8 +716,15 @@ const swTris = sw.index ? sw.index.count / 3 : sw.attributes.position.count / 3;
 console.log('\nreference switch (pins clipped) tris', swTris, 'z', sw.boundingBox.min.z.toFixed(2), '..', sw.boundingBox.max.z.toFixed(2));
 check(MX.STEM_HEIGHT === 3.6, 'MX stem height constant is 3.6 (independent of the socket depth)');
 check(Math.abs(sw.boundingBox.max.z - (plateTop + 6.6 + MX.STEM_HEIGHT)) < 1e-3, 'switch stem top z = plateTop + 6.6 + 3.6');
-check(Math.abs(sw.boundingBox.min.z - (plateTop - 1.5 - 5.0)) < 1e-3, `clipped: no pins, switch bottom = plateBottom - 5.0 (got ${sw.boundingBox.min.z.toFixed(2)})`);
-check(sw.boundingBox.min.z > base.assembly.cavityBottomZ - 1e-6, 'clipped: housing stays above the cavity floor');
+check(Math.abs(sw.boundingBox.min.z - (plateTop - 1.5 - 5.0 - 3.0)) < 1e-3, `clipped: no pins, centre post bottom = plateBottom - 8.0 (got ${sw.boundingBox.min.z.toFixed(2)})`);
+check(sw.boundingBox.min.z > base.assembly.postPocketBottomZ + 0.2 - 1e-6 && sw.boundingBox.min.z < base.assembly.cavityBottomZ, `clipped: post reaches into the pocket and clears its floor by >= 0.2 (post bottom ${sw.boundingBox.min.z.toFixed(2)}, pocket floor ${base.assembly.postPocketBottomZ})`);
+{
+  // the post (dia 4.0) is inside the 4.6 pocket: no vertex of the switch below the cavity floor lies outside r 2.3 - 0.3
+  const pos = sw.attributes.position.array;
+  let ok = true;
+  for (let i = 0; i < pos.length; i += 3) if (pos[i + 2] < base.assembly.cavityBottomZ - 1e-6 && Math.hypot(pos[i], pos[i + 1]) > base.assembly.postPocketDiameter / 2 - 0.3 + 1e-6) ok = false;
+  check(ok, 'clipped: only the post dips below the cavity floor, inside the pocket with 0.3 clearance');
+}
 check(Math.abs(sw.boundingBox.max.x - 7.8) < 1e-3, 'switch flange is 15.6 wide');
 check(Math.abs(sw.boundingBox.max.z - MX.STEM_HEIGHT - (base.assembly.capZ - (base.assembly.seat - 6.6))) < 1e-3, `housing top is ${(base.assembly.seat - 6.6).toFixed(1)} mm below the seated cap underside (seat ${base.assembly.seat})`);
 check(Math.abs(sw.boundingBox.max.z - (base.assembly.capZ + base.assembly.socketCeilingZ)) < 1e-3, `stem tip sits at the socket ceiling (tip ${sw.boundingBox.max.z.toFixed(2)}, ceiling ${(base.assembly.capZ + base.assembly.socketCeilingZ).toFixed(2)})`);
