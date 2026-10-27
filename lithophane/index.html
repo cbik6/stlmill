@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lithophane Generator — STLmill</title>
+    <meta
+      name="description"
+      content="Turn a photo into a lithophane: a 3D-printed plate that shows the picture when lit from behind. Flat, curved or a full cylinder, with a frame. Preview it backlit and download a print-ready STL. Runs in your browser, nothing uploaded."
+    />
+    <meta name="theme-color" content="#a47a52" />
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <!-- Fonts are self-hosted (public/fonts); nothing on this site talks to a third party. -->
+    <link rel="preload" href="/fonts/barlow-semi-condensed-800-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/barlow-semi-condensed-600-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/barlow-600-latin.woff2" as="font" type="font/woff2" crossorigin />
+  </head>
+  <body class="board ck-page lp-page">
+    <a class="skip-link" href="#rail">Skip to the controls</a>
+
+    <header class="pins">
+      <a class="pinned brand" href="../" aria-label="STLmill home">
+        <span class="pin" aria-hidden="true"></span>
+        <!-- Millstone mark: stone follows currentColor, facet is brand orange. Source: public/logo/stlmill-mark.svg -->
+        <svg class="mark" viewBox="0 0 120 120" aria-hidden="true">
+          <path fill="currentColor" fill-rule="evenodd" d="M60 8a52 52 0 1 1 0 104a52 52 0 1 1 0-104zM50 50v20h20V50z" />
+          <g stroke="#F07A2A" stroke-width="2.4" stroke-linecap="round" fill="none">
+            <line x1="60" y1="78" x2="60" y2="104" /><line x1="42" y1="60" x2="16" y2="60" /><line x1="78" y1="60" x2="104" y2="60" />
+            <line x1="47" y1="73" x2="29" y2="91" /><line x1="73" y1="73" x2="91" y2="91" /><line x1="47" y1="47" x2="29" y2="29" /><line x1="73" y1="47" x2="91" y2="29" />
+          </g>
+          <path fill="#F07A2A" d="M31 13.4A52 52 0 0 1 89 13.4L60 40z" />
+        </svg>
+        <span class="wordmark">STLmill</span>
+      </a>
+      <h1 class="pinned tool-pin"><span class="pin" aria-hidden="true"></span>Lithophane Generator</h1>
+    </header>
+
+    <main class="shop">
+      <!-- ================= The rail ================= -->
+      <aside class="rail" id="rail" aria-label="Lithophane controls">
+        <!-- Header card: the photo -->
+        <section class="hanger" aria-labelledby="photo-heading">
+          <span class="peg" aria-hidden="true"></span>
+          <div class="swatch swatch-orange head-card">
+            <span class="hole" aria-hidden="true"></span>
+            <h2 id="photo-heading" class="emb emb-orange head-label">Lithophane</h2>
+
+            <label class="dropzone" id="lp-drop" for="lp-file">
+              <span class="drop-label">Drop a photo here, or <u>browse</u></span>
+              <span class="drop-hint">JPG, PNG or WebP · stays on your computer</span>
+              <input type="file" id="lp-file" accept="image/png,image/jpeg,image/webp" />
+            </label>
+            <span class="hint hint-error" id="lp-file-error" role="alert" hidden></span>
+
+            <div class="trace lp-photo" id="lp-photo">
+              <img id="lp-photo-img" alt="The photo on the plate" width="64" height="64" />
+              <p class="trace-text"><strong id="lp-photo-name">Sample photo</strong><span id="lp-photo-meta">Dark areas print thick, light areas thin.</span></p>
+            </div>
+
+            <div class="img-toggles">
+              <label class="toggle" for="lp-invert">
+                <input type="checkbox" id="lp-invert" />
+                <span class="toggle-track" aria-hidden="true"></span>
+                Invert
+              </label>
+              <button type="button" class="dock-quiet lp-sample" id="lp-sample" hidden>Use the sample</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Group cards (Size, Shape, Frame, Detail) are built by src/lithophane/main.js -->
+        <div id="lp-groups">
+          <noscript>
+            <section class="hanger">
+              <div class="swatch swatch-white" style="padding: 24px">The Lithophane Generator needs JavaScript to build and preview the model.</div>
+            </section>
+          </noscript>
+        </div>
+
+        <div class="foot" id="lp-foot">
+          <button type="button" class="foot-pin" id="lp-reset" title="Back to the default settings (keeps your photo)">Reset</button>
+        </div>
+      </aside>
+
+      <!-- ================= The bench ================= -->
+      <section class="bench" id="bench" aria-label="3D preview">
+        <div class="bench-plate" id="lp-viewer" role="img" aria-label="Live 3D preview of the lithophane. Drag to orbit, scroll to zoom."></div>
+
+        <div class="bench-toolbar" role="toolbar" aria-label="View options">
+          <fieldset class="seg seg-ink" id="lp-look">
+            <legend class="visually-hidden">Lighting</legend>
+            <label class="seg-item"><input type="radio" name="lp-look" value="lit" checked /><span>Lit</span></label>
+            <label class="seg-item"><input type="radio" name="lp-look" value="backlit" /><span>Backlit</span></label>
+          </fieldset>
+          <span class="tool-sep" aria-hidden="true"></span>
+          <div class="tool-set">
+            <button type="button" class="tool-btn" id="lp-tool-grid" aria-pressed="true" title="10 mm grid on the plate">Grid</button>
+            <button type="button" class="tool-btn" id="lp-tool-fit" title="Frame the plate again">Re-centre</button>
+          </div>
+        </div>
+
+        <div class="bench-busy" id="lp-busy" role="status" aria-live="polite" hidden>
+          <span class="spinner" aria-hidden="true"></span><span id="lp-busy-text">Building…</span>
+        </div>
+
+        <div class="dock" role="group" aria-label="Export">
+          <ul class="dock-slip" id="lp-slip" role="status" aria-live="polite" hidden></ul>
+          <p class="dock-summary" id="lp-summary"><strong>— × — × — mm</strong>Building the preview…</p>
+          <!-- Name slip: every download goes through here so the file is named before it is written -->
+          <form class="dock-name" id="lp-name-form" hidden novalidate>
+            <label class="dock-name-label" for="lp-name">Name this file</label>
+            <div class="dock-name-row">
+              <input type="text" id="lp-name" class="dock-name-input" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="60" placeholder="my-lithophane" />
+              <span class="dock-name-ext" aria-hidden="true">.stl</span>
+              <button type="submit" class="dock-name-go">Save</button>
+              <button type="button" class="dock-quiet" id="lp-name-cancel">Cancel</button>
+            </div>
+            <p class="dock-name-err" id="lp-name-err" role="alert" hidden></p>
+          </form>
+          <div class="dock-foot">
+            <span class="dock-note" id="lp-print-note">Prints standing up, picture side facing you. Add a brim.</span>
+          </div>
+          <button type="button" class="tab" id="lp-download">
+            Download STL
+            <svg class="tab-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 12h16M13 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="../src/lithophane/main.js"></script>
+  </body>
+</html>

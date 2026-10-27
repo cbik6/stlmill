@@ -7,12 +7,14 @@
 //   status 'soon'  -> a dashed shadow-board outline on an empty hook, labelled with
 //                     `name`. Never a card, never a "coming soon" pill: the outline IS
 //                     the honest statement that the slot is open.
+//   status 'hidden' -> not on the hub at all (the tool exists in the repo but is parked;
+//                     also leave its page out of vite.config.js so it is not deployed).
 // A live tool may also author its card in index.html (as the Clicker does, to carry
 // its live demo) by giving the element `data-tool="<id>"`; main.js then leaves that
 // markup in place instead of rendering a generic card.
 //
 // Each entry:
-//   { id, name, sub, tagline, href, status: 'live' | 'soon', color: 'orange' | 'teal' | 'white', action, icon }
+//   { id, name, sub, tagline, href, status: 'live' | 'soon' | 'hidden', color: 'orange' | 'teal' | 'white', action, icon }
 // `icon` is an inline SVG string (24x24 viewBox, stroke = currentColor) kept for tool
 // pages and any list view that wants a glyph.
 // Remember to also add `<id>/index.html` to build.rollupOptions.input in
@@ -68,7 +70,7 @@ export const TOOLS = [
     sub: 'A pumpkin, ghost or your own sculpt, made into a cap that presses onto a switch.',
     tagline: 'Character cap — a sculpted character turned into an MX-switch cap with a two-colour face',
     href: './character-cap/',
-    status: 'live',
+    status: 'hidden', // parked by Clark 2026-10-26; set back to 'live' and restore its vite input to show it again
     color: 'orange',
     action: 'Open the mill',
     icon: ICONS.character,
@@ -79,7 +81,7 @@ export const TOOLS = [
     sub: 'A photo turned into a plate that only shows its picture when lit from behind.',
     tagline: 'Lithophane — flat or curved, framed, with your photo',
     href: './lithophane/',
-    status: 'soon',
+    status: 'live',
     color: 'white',
     action: 'Open the mill',
     icon: ICONS.lithophane,

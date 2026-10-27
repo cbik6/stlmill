@@ -56,6 +56,7 @@ function renderWall() {
   const soon = document.getElementById('soon-tools');
   if (!live || !soon) return;
   for (const tool of TOOLS) {
+    if (tool.status === 'hidden') continue; // parked tools are not on the wall at all
     if (tool.status === 'live') {
       // Authored cards (e.g. the Clicker, which carries the demo) stay as written.
       if (!live.querySelector(`[data-tool="${CSS.escape(tool.id)}"]`)) {

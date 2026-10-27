@@ -1,0 +1,34 @@
+/* ==========================================================================
+   Lithophane: the Clicker's Bench & Rail (src/clicker/clicker.css, imported
+   first) plus the few pieces this page adds.
+   ========================================================================== */
+
+/* The photo thumbnail is a photo, not a traced mask: fill the tile. */
+.lp-photo img {
+  object-fit: cover;
+  background: var(--orange-field);
+}
+
+.lp-photo .trace-text span {
+  display: block;
+}
+
+.lp-sample {
+  margin-left: auto;
+}
+
+/* One-line notes under a group's controls. */
+.ctl-note {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--white-ink-2);
+}
+
+/* Print hint where the Clicker has "STL as a zip". */
+.dock-note {
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--white-ink-2);
+  white-space: nowrap;
+}
